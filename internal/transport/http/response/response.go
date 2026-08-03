@@ -9,7 +9,7 @@ import (
 	"net/http"
 
 	"github.com/DextaAfrica/Backend/internal/apperror"
-	"github.com/DextaAfrica/Backend/internal/transport/http/middleware"
+	"github.com/DextaAfrica/Backend/internal/requestid"
 )
 
 // Envelope is the success response shape: {"data": ...}. A stable wrapper
@@ -70,7 +70,7 @@ func NoContent(w http.ResponseWriter) {
 // client faults (4xx) at debug level to keep logs signal-heavy.
 func Error(w http.ResponseWriter, r *http.Request, err error) {
 	appErr := apperror.As(err)
-	requestID := middleware.RequestIDFromContext(r.Context())
+	requestID := requestid.FromContext(r.Context())
 
 	logAttrs := []any{
 		"request_id", requestID,
