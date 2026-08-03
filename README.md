@@ -18,14 +18,13 @@ boundary, and content model in depth.
 
 ## Start developing
 
-Requires Go 1.23+ and Docker (for Postgres). If Go isn't installed locally,
-every command below also works inside `golang:1.23` via Docker — see
-"Running without a local Go install" below.
+Requires Docker. A local Go 1.23+ install is optional — every command below
+also works inside `golang:1.23` via Docker (see "Running without a local Go
+install" below).
 
 ```bash
-cp .env.example .env          # fill in JWT_SECRET, ADMIN_BOOTSTRAP_*, etc.
-docker compose up -d postgres # start Postgres only
-go run ./cmd/api              # migrations run automatically on boot
+cp .env.example .env   # fill in JWT_SECRET, ADMIN_BOOTSTRAP_*, etc.
+make dev                # hot-reloading API (air) + Postgres, source bind-mounted
 ```
 
 The API listens on `http://localhost:8080`. Log in as the bootstrap admin:
@@ -36,6 +35,18 @@ curl -X POST http://localhost:8080/auth/login \
   -d '{"email":"admin@dexta.africa","password":"<ADMIN_BOOTSTRAP_PASSWORD>"}'
 ```
 
+### Two Docker setups: development vs. production
+
+| | Dockerfile | Compose file | Behavior |
+|---|---|---|---|
+| **Development** | `Dockerfile.dev` | `docker-compose.dev.yml` | Full Go toolchain, [air](https://github.com/air-verse/air) hot reload, source bind-mounted, Postgres port exposed on the host |
+| **Production**  | `Dockerfile`     | `docker-compose.yml`     | Multi-stage build → minimal non-root distroless runtime, no source mount, Postgres not exposed publicly |
+
+```bash
+make dev        # docker compose -f docker-compose.dev.yml up --build
+make prod       # docker compose up --build (the same image used in deployment)
+```
+
 ### Running without a local Go install
 
 ```bash
@@ -43,21 +54,18 @@ docker run --rm -v "$(pwd):/app" -w /app golang:1.23 go build ./...
 docker run --rm -v "$(pwd):/app" -w /app golang:1.23 go test ./...
 ```
 
-### Full stack via Docker Compose
-
-```bash
-docker compose up --build
-```
-
 ## Commands
 
 ```bash
-make run           # go run ./cmd/api
-make build         # compile to bin/api
-make test          # go test ./... -race -cover
-make vet           # go vet ./...
-make lint          # golangci-lint (if installed)
-make docker-up     # postgres + api via docker compose
+make run              # go run ./cmd/api
+make build            # compile to bin/api
+make test             # go test ./... -race -cover
+make vet              # go vet ./...
+make lint             # golangci-lint (matches the CI lint job)
+make dev / make dev-down     # hot-reloading local stack
+make prod / make prod-down   # production-image local stack
+make docker-build-dev        # build Dockerfile.dev standalone
+make docker-build-prod       # build Dockerfile standalone
 ```
 
 ## Configuration
@@ -82,7 +90,8 @@ internal/
 ├── authtoken/                admin session JWT issue/verify
 ├── validator/                struct-tag validation → apperror.Error
 ├── db/                       connection pool + migrations runner
-│   └── migrations/           versioned SQL migrations (golang-migrate)
+│   └── migrations/           000001_schema.up.sql / .down.sql — the whole schema, one file each way
+│                             (see the file's header comment for how to add the *next* migration)
 ├── logging/                  slog setup (JSON in prod, text in dev)
 └── transport/http/
     ├── router.go              the full route table — public, rate-limited, admin
@@ -127,6 +136,15 @@ All responses are JSON, wrapped as `{"data": ...}` on success or
 Saving content, portfolio, journal, or career entries fires a best-effort
 `POST` to `FRONTEND_REVALIDATE_URL` so the Next.js frontend's cache updates
 immediately — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#revalidation-and-outbound-webhooks).
+
+## CI/CD
+
+| Workflow | Trigger | Does |
+|---|---|---|
+| `.github/workflows/ci.yml` | every push/PR to `main`/`develop` | `go vet` + `golangci-lint`; `go build` + unit tests (race + coverage); a real-Postgres migration-reversibility check (`internal/db/migrate_integration_test.go`, tag `integration`); a `Dockerfile` build smoke test |
+| `.github/workflows/docker-publish.yml` | push to `main`, tags `v*.*.*` | builds `Dockerfile` and pushes to `ghcr.io/<org>/backend`, tagged by branch, semver, and commit SHA |
+| `.github/workflows/codeql.yml` | push/PR + weekly schedule | CodeQL static analysis for Go |
+| `.github/dependabot.yml` | weekly | dependency update PRs for Go modules, Docker base images, and Actions versions |
 
 ## Wiring the frontend
 
