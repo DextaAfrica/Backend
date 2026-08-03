@@ -1,4 +1,5 @@
-.PHONY: run build test vet lint tidy migrate-up migrate-down docker-build docker-up docker-down
+.PHONY: run build test vet lint tidy migrate-up migrate-down \
+        dev dev-down prod prod-down docker-build-dev docker-build-prod
 
 run:
 	go run ./cmd/api
@@ -24,11 +25,22 @@ migrate-up:
 migrate-down:
 	migrate -path internal/db/migrations -database "$$DATABASE_URL" down 1
 
-docker-build:
-	docker build -t dexta-backend .
+# Local development: hot reload via air, source bind-mounted, Postgres port exposed.
+dev:
+	docker compose -f docker-compose.dev.yml up --build
 
-docker-up:
+dev-down:
+	docker compose -f docker-compose.dev.yml down
+
+# Production-shaped local run: the same distroless image used in deployment.
+prod:
 	docker compose up --build
 
-docker-down:
+prod-down:
 	docker compose down
+
+docker-build-dev:
+	docker build -f Dockerfile.dev -t dexta-backend:dev .
+
+docker-build-prod:
+	docker build -f Dockerfile -t dexta-backend:latest .

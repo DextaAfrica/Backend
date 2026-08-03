@@ -1,5 +1,6 @@
 .git
 .env
 bin/
+tmp/
 *.md
 docs/
