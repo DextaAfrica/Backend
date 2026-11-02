@@ -7,6 +7,7 @@ DROP TRIGGER IF EXISTS trg_pages_updated_at ON pages;
 DROP TRIGGER IF EXISTS trg_admins_updated_at ON admins;
 DROP FUNCTION IF EXISTS set_updated_at();
 
+DROP TABLE IF EXISTS outbox_events;
 DROP TABLE IF EXISTS newsletter_subscribers;
 DROP TABLE IF EXISTS enquiries;
 DROP TABLE IF EXISTS career_listings;

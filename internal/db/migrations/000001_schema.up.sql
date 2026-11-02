@@ -129,6 +129,25 @@ CREATE TABLE newsletter_subscribers (
 
 CREATE INDEX idx_newsletter_email ON newsletter_subscribers (email);
 
+-- ── Transactional Outbox (Zero Data Loss) ──────────────────────────────────
+CREATE TABLE outbox_events (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_type     TEXT NOT NULL,
+    aggregate_type TEXT NOT NULL,
+    aggregate_id   TEXT NOT NULL,
+    payload        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status         TEXT NOT NULL DEFAULT 'PENDING',
+    retry_count    INTEGER NOT NULL DEFAULT 0,
+    max_retries    INTEGER NOT NULL DEFAULT 5,
+    error_message  TEXT,
+    processed_at   TIMESTAMPTZ,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_outbox_status CHECK (status IN ('PENDING', 'PROCESSING', 'PROCESSED', 'FAILED'))
+);
+
+CREATE INDEX idx_outbox_status ON outbox_events (status, created_at);
+
 -- ── updated_at maintenance ───────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
