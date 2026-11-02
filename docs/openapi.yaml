@@ -1,0 +1,204 @@
+openapi: 3.1.0
+info:
+  title: Dexta Africa Enterprise Real Estate API
+  description: High-performance, zero-data-loss backend engine powering Dexta Africa internal enterprise operations and customer web portal.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local Development Environment
+  - url: https://api.dextaafrica.com
+    description: Production Environment
+
+paths:
+  /health:
+    get:
+      summary: System Health & Diagnostic Check
+      description: Returns health status of PostgreSQL, Redis, background outbox engine, and memory usage.
+      responses:
+        '200':
+          description: System operational
+        '503':
+          description: One or more critical services degraded
+
+  /api/v1/auth/register:
+    post:
+      summary: Client Investor Registration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [first_name, last_name, email, password]
+              properties:
+                first_name: { type: string }
+                last_name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                phone_number: { type: string }
+                country_code: { type: string }
+      responses:
+        '201':
+          description: Registration successful, tokens issued
+
+  /api/v1/auth/login:
+    post:
+      summary: Staff and Client Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Authentication successful
+
+  /api/v1/auth/me:
+    get:
+      summary: Authenticated User Profile & Roles
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Profile retrieved
+
+  /api/v1/properties/developments:
+    get:
+      summary: List Real Estate Estates & Developments
+      parameters:
+        - in: query
+          name: country
+          schema: { type: string }
+        - in: query
+          name: city
+          schema: { type: string }
+        - in: query
+          name: featured
+          schema: { type: boolean }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 10 }
+      responses:
+        '200':
+          description: Paginated developments list
+
+  /api/v1/properties/developments/{slug}:
+    get:
+      summary: Get Development Details by Slug
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Full development details with units, media, and milestones
+
+  /api/v1/properties/units:
+    get:
+      summary: Search and Filter Units
+      parameters:
+        - in: query
+          name: development_id
+          schema: { type: string, format: uuid }
+        - in: query
+          name: type
+          schema: { type: string, enum: [APARTMENT, VILLA, DUPLEX, PENTHOUSE, MANSION, LAND_LOT] }
+        - in: query
+          name: bedrooms
+          schema: { type: integer }
+        - in: query
+          name: min_price
+          schema: { type: number }
+        - in: query
+          name: max_price
+          schema: { type: number }
+      responses:
+        '200':
+          description: Filtered units list
+
+  /api/v1/properties/units/{id}/reserve:
+    post:
+      summary: Concurrency-Safe Unit Reservation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [client_name, client_email]
+              properties:
+                client_name: { type: string }
+                client_email: { type: string, format: email }
+                client_phone: { type: string }
+                notes: { type: string }
+      responses:
+        '201':
+          description: Unit reserved, transactional outbox event queued
+        '409':
+          description: Unit already reserved or sold
+
+  /api/v1/crm/inquiries:
+    post:
+      summary: Submit Client Inquiry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [full_name, email, phone_number]
+              properties:
+                full_name: { type: string }
+                email: { type: string, format: email }
+                phone_number: { type: string }
+                country: { type: string }
+                budget_min: { type: number }
+                budget_max: { type: number }
+                message: { type: string }
+      responses:
+        '201':
+          description: Inquiry registered and outbox email queued
+
+  /api/v1/crm/inspections:
+    post:
+      summary: Book Physical or Virtual Site Inspection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [full_name, email, phone_number, scheduled_date, time_slot]
+              properties:
+                full_name: { type: string }
+                email: { type: string, format: email }
+                phone_number: { type: string }
+                type: { type: string, enum: [PHYSICAL, VIRTUAL_VIDEO] }
+                scheduled_date: { type: string, format: date }
+                time_slot: { type: string }
+                notes: { type: string }
+      responses:
+        '201':
+          description: Inspection booked with calendar invite queued
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
