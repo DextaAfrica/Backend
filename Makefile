@@ -1,24 +1,46 @@
-.PHONY: run build test seeder docker-up docker-down clean
+.PHONY: run build vet lint tidy migrate-up migrate-down \
+        dev dev-down prod prod-down docker-build-dev docker-build-prod clean
 
 run:
-	go run cmd/api/main.go
-
-seeder:
-	go run cmd/seeder/main.go
+	go run ./cmd/api
 
 build:
-	go build -o bin/dexta-api cmd/api/main.go
-	go build -o bin/dexta-seeder cmd/seeder/main.go
+	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/api ./cmd/api
 
-test:
-	go test -v -race ./...
+vet:
+	go vet ./...
 
-docker-up:
-	docker compose up -d
+lint:
+	golangci-lint run ./...
 
-docker-down:
+tidy:
+	go mod tidy
+
+migrate-up:
+	migrate -path internal/db/migrations -database "$$DATABASE_URL" up
+
+migrate-down:
+	migrate -path internal/db/migrations -database "$$DATABASE_URL" down 1
+
+# Local development: hot reload via air, source bind-mounted, Postgres port exposed.
+dev:
+	docker compose -f docker-compose.dev.yml up --build
+
+dev-down:
+	docker compose -f docker-compose.dev.yml down
+
+# Production-shaped local run: the same distroless image used in deployment.
+prod:
+	docker compose up --build
+
+prod-down:
 	docker compose down
+
+docker-build-dev:
+	docker build -f Dockerfile.dev -t dexta-backend:dev .
+
+docker-build-prod:
+	docker build -f Dockerfile -t dexta-backend:latest .
 
 clean:
 	rm -rf bin/
-

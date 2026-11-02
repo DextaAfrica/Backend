@@ -1,34 +1,28 @@
-# Stage 1: Build the binary
-FROM golang:1.24-alpine AS builder
+# Production image: multi-stage build producing a minimal, non-root,
+# distroless runtime. No shell, no package manager, no build tooling in the
+# final image — smallest possible attack surface for what actually runs in
+# production. For local development with hot reload, use Dockerfile.dev.
 
-WORKDIR /app
+# --- Build stage ---
+FROM golang:1.23-alpine AS build
+WORKDIR /src
 
-RUN apk add --no-cache git ca-certificates tzdata
+RUN apk add --no-cache ca-certificates git
 
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-w -s" \
-    -o /app/bin/dexta-api ./cmd/api
-
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-w -s" \
-    -o /app/bin/dexta-seeder ./cmd/seeder
-
-# Stage 2: Minimal runtime image
-FROM alpine:3.20
-
+# --- Runtime stage ---
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates tzdata
+COPY --from=build /out/api ./api
+COPY --from=build /src/internal/db/migrations ./internal/db/migrations
 
-COPY --from=builder /app/bin/dexta-api /app/dexta-api
-COPY --from=builder /app/bin/dexta-seeder /app/dexta-seeder
-
+USER nonroot:nonroot
 EXPOSE 8080
 
-CMD ["/app/dexta-api"]
-
+ENTRYPOINT ["/app/api"]

@@ -1,76 +1,116 @@
-# Dexta Africa — Enterprise Real Estate Platform Backend
+# Dexta Africa — Backend
 
-High-performance, zero-data-loss backend engine engineered for **Dexta Africa**. This platform powers both internal continental operations (Admin Portal, back-office workflows, inventory, financials, and CRM) and the customer-facing dynamic web portal.
+A production-grade Go API serving the Dexta Africa Next.js frontend: a lightweight CMS for editorial content, a portfolio/journal/careers catalog, and the enquiry/newsletter integration boundary — with typed errors, env-driven configuration, and no hardcoded values anywhere in the request path.
 
----
+## Stack
 
-## 🏛️ Architecture Highlights
+- Go 1.23, [chi](https://github.com/go-chi/chi) router on the standard `net/http`
+- PostgreSQL via [pgx](https://github.com/jackc/pgx), schema migrations via [golang-migrate](https://github.com/golang-migrate/migrate)
+- JWT admin auth ([golang-jwt](https://github.com/golang-jwt/jwt)) + bcrypt
+- Struct validation via [go-playground/validator](https://github.com/go-playground/validator)
+- Structured logging via the standard library's `log/slog`
 
-- **Clean / Hexagonal Architecture (DDD)**: Domain models isolated from external frameworks.
-- **Zero-Data-Loss Guarantee**: Transactional Outbox pattern ensures event delivery (emails, notifications, calendar bookings, invoices) even during network drops.
-- **Concurrency & Double-Booking Protection**: Row-level pessimistic locking (`SELECT FOR UPDATE`) prevents simultaneous allocation collisions on property units.
-- **Sliding-Window Rate Limiting**: Redis-backed distributed rate limiting with automated client throttling and fallback.
-- **Unified JSON Response Envelope**: Standardized across all endpoints (`success`, `status_code`, `message`, `data`, `meta`, `error`).
-- **OpenAPI 3.1 Spec**: Ready for contract-driven type generation across the Web and Admin repos (`docs/openapi.yaml`).
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the layering, error boundary, and content model in depth.
 
----
+## Start developing
 
-## 📁 Project Structure
+Requires Docker.
 
-```
-Backend/
-├── cmd/
-│   ├── api/                    # HTTP Server & Router Entrypoint
-│   └── seeder/                 # Continental Data Seeder (Real portfolio data)
-├── internal/
-│   ├── application/            # Outbox Worker & Use-case orchestrators
-│   ├── config/                 # Environment & Config loader
-│   ├── domain/                 # Core Domain Entities (Property, CRM, Identity, Finance, Outbox)
-│   ├── infrastructure/         # Postgres (GORM/pgx), Redis, Logger (Zerolog)
-│   └── interfaces/             # HTTP Handlers, Middlewares (Auth, CORS, Rate Limit, Recover), Responses
-├── docs/                       # OpenAPI 3.1 Specification
-├── Dockerfile                  # Multi-stage optimized Alpine container
-├── docker-compose.yml          # PostgreSQL 16, Redis 7.2, Mailpit, Dexta API
-└── Makefile                    # Standardized development commands
-```
-
----
-
-## 🚀 Quick Start (Local Development)
-
-### 1. Boot Services with Docker Compose
 ```bash
-docker compose up -d
+cp .env.example .env   # fill in JWT_SECRET, ADMIN_BOOTSTRAP_*, etc.
+make dev                # hot-reloading API (air) + Postgres, source bind-mounted
 ```
-This starts:
-- **PostgreSQL 16** on `localhost:5432`
-- **Redis 7.2** on `localhost:6379`
-- **Mailpit** (Local Email Sandbox) on `http://localhost:8025` (SMTP: `1025`)
 
-### 2. Run Database Seeder
-Seed realistic continental portfolio developments (Lagos & Nairobi), units, construction milestones, and initial staff credentials:
+The API listens on `http://localhost:8080`. Log in as the bootstrap admin:
+
 ```bash
-make seeder
+curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@dexta.africa","password":"<ADMIN_BOOTSTRAP_PASSWORD>"}'
 ```
 
-### 3. Run the Backend Server
+### Two Docker setups: development vs. production
+
+| | Dockerfile | Compose file | Behavior |
+|---|---|---|---|
+| **Development** | `Dockerfile.dev` | `docker-compose.dev.yml` | Full Go toolchain, [air](https://github.com/air-verse/air) hot reload, source bind-mounted, Postgres port exposed on the host |
+| **Production**  | `Dockerfile`     | `docker-compose.yml`     | Multi-stage build → minimal non-root distroless runtime, no source mount, Postgres not exposed publicly |
+
 ```bash
-make run
+make dev        # docker compose -f docker-compose.dev.yml up --build
+make prod       # docker compose up --build (the same image used in deployment)
 ```
-Server runs on `http://localhost:8080`.
 
----
+## Commands
 
-## 🧪 Testing & Verification
 ```bash
-make test
+make run              # go run ./cmd/api
+make build            # compile to bin/api
+make vet              # go vet ./...
+make lint             # golangci-lint (matches the CI lint job)
+make dev / make dev-down     # hot-reloading local stack
+make prod / make prod-down   # production-image local stack
+make docker-build-dev        # build Dockerfile.dev standalone
+make docker-build-prod       # build Dockerfile standalone
 ```
-All unit and integration tests execute with race detection enabled.
 
----
+## Configuration
 
-## 🔗 Frontend Integration (Web & Admin Repos)
-The API contract is defined in `docs/openapi.yaml`. In your Web and Admin frontends, generate TypeScript client SDKs directly:
-```bash
-npx @hey-api/openapi-ts -i ../Backend/docs/openapi.yaml -o src/api/generated
+Every tunable — database DSN, JWT secret, CORS origins, rate limits, the frontend revalidation webhook, the newsletter forwarding webhook — is read from the environment by `internal/config`, validated at startup, and never defaulted for anything sensitive. See [.env.example](.env.example) for the full, documented list.
+
+## Project layout
+
+```text
+cmd/api/                     entrypoint: wires config → db → repos → services → handlers → server
+internal/
+├── config/                  env-driven configuration, validated at boot
+├── apperror/                 the single error vocabulary (Code, HTTP status mapping)
+├── domain/                  models + repository interfaces (no framework imports)
+├── repository/postgres/     pgx implementations of the domain repository interfaces
+├── service/                 business logic: validation rules, publish transitions,
+│                             revalidation triggers, webhook forwarding
+├── authtoken/                admin session JWT issue/verify
+├── validator/                struct-tag validation → apperror.Error
+├── db/                       connection pool + migrations runner
+│   └── migrations/           000001_schema.up.sql / .down.sql — the whole schema, one file each way
+├── logging/                  slog setup (JSON in prod, text in dev)
+└── transport/http/
+    ├── router.go              the full route table — public, rate-limited, admin
+    ├── handlers/               one file per resource; request → service → response
+    ├── request/                inbound DTOs + validation tags
+    ├── response/               success/error envelope, the only place that writes JSON errors
+    └── middleware/             request ID, logging, panic recovery, CORS, rate limiting, JWT auth
 ```
+
+## API surface
+
+All responses are JSON, wrapped as `{"data": ...}` on success or `{"error": {"code", "message", "fields"}, "request_id"}` on failure.
+
+### Public
+
+| Method | Path                          | Purpose                              |
+|--------|-------------------------------|---------------------------------------|
+| GET    | `/healthz` / `/readyz`        | Liveness / readiness probes           |
+| POST   | `/auth/login`                 | Admin login → JWT                     |
+| GET    | `/content/{key}`               | Published page content (`home`, `about`, `lifestyle`, `contact`, `careers`, `privacy`, `terms`, `cookies`, `accessibility`) |
+| GET    | `/portfolio`, `/portfolio/{slug}` | Published developments (list/detail) |
+| GET    | `/journal`, `/journal/{slug}`  | Published articles (list/detail)      |
+| GET    | `/careers/listings`, `/careers/listings/{slug}` | Published job listings |
+| POST   | `/enquiries`                   | Submit the contact form (rate-limited)|
+| POST   | `/newsletter/subscribe`        | Subscribe (rate-limited)              |
+| POST   | `/newsletter/unsubscribe`      | Unsubscribe (rate-limited)            |
+
+### Admin (`Authorization: Bearer <token>` from `/auth/login`)
+
+| Method | Path                                    | Purpose                        |
+|--------|------------------------------------------|---------------------------------|
+| GET/PUT| `/admin/content/{key}`                   | Read/write a page's content     |
+| GET    | `/admin/content`                         | List every page                 |
+| CRUD   | `/admin/portfolio[/{id}]`                | Manage developments             |
+| CRUD   | `/admin/journal[/{id}]`                  | Manage articles                 |
+| CRUD   | `/admin/careers/listings[/{id}]`         | Manage job listings             |
+| GET    | `/admin/enquiries[/{id}]`                | Review submissions              |
+| PATCH  | `/admin/enquiries/{id}/status`           | Mark new/read/archived          |
+| GET    | `/admin/newsletter/subscribers`          | List subscribers                |
+
+Saving content, portfolio, journal, or career entries fires a best-effort `POST` to `FRONTEND_REVALIDATE_URL` so the Next.js frontend's cache updates immediately.

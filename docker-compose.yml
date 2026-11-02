@@ -1,74 +1,35 @@
-version: '3.9'
-
+# Production-shaped stack: builds the distroless image from Dockerfile,
+# no source bind-mount, config from a real .env file. For local development
+# with hot reload, use docker-compose.dev.yml instead.
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dexta
+      POSTGRES_PASSWORD: dexta
+      POSTGRES_DB: dexta
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dexta -d dexta"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: dexta-backend-api
     restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://dexta:dexta@postgres:5432/dexta?sslmode=disable
     ports:
       - "8080:8080"
-    environment:
-      - APP_ENV=development
-      - APP_PORT=8080
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=dexta_user
-      - DB_PASSWORD=dexta_secret_password_2026
-      - DB_NAME=dexta_africa
-      - DB_SSLMODE=disable
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - MAIL_HOST=mailpit
-      - MAIL_PORT=1025
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: dexta-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: dexta_user
-      POSTGRES_PASSWORD: dexta_secret_password_2026
-      POSTGRES_DB: dexta_africa
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dexta_user -d dexta_africa"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7.2-alpine
-    container_name: dexta-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  mailpit:
-    image: axllent/mailpit:latest
-    container_name: dexta-mailpit
-    restart: unless-stopped
-    ports:
-      - "1025:1025" # SMTP port
-      - "8025:8025" # Web UI inbox
 
 volumes:
-  pgdata:
-  redisdata:
-
+  postgres_data:

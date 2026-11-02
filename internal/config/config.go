@@ -1,183 +1,119 @@
+// Package config loads and validates runtime configuration from environment
+// variables (and an optional local .env file). No other package reads
+// environment variables directly — every tunable or secret in the system
+// flows through the Config struct built here, so every tunable is visible in
+// one place and every required value fails fast at boot instead of panicking
+// deep in a request handler.
 package config
 
 import (
-	"os"
-	"strconv"
+	"fmt"
+	"log/slog"
 	"time"
 
+	"github.com/caarlos0/env/v10"
 	"github.com/joho/godotenv"
 )
 
-// Config holds all configuration parameters for the Dexta Africa platform.
+// Config is the fully-resolved application configuration. Fields are grouped
+// by the subsystem that owns them.
 type Config struct {
-	App         AppConfig
-	Database    DatabaseConfig
-	Redis       RedisConfig
-	JWT         JWTConfig
-	Mail        MailConfig
-	Storage     StorageConfig
-	RateLimiter RateLimiterConfig
+	App        App
+	Database   Database
+	Auth       Auth
+	CORS       CORS
+	RateLimit  RateLimit
+	Frontend   Frontend
+	Newsletter Newsletter
 }
 
-type AppConfig struct {
-	Name            string
-	Environment     string
-	Port            string
-	BaseURL         string
-	FrontendWebURL  string
-	FrontendAdminURL string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
+type App struct {
+	Env             string        `env:"APP_ENV" envDefault:"development"`
+	Port            int           `env:"APP_PORT" envDefault:"8080"`
+	LogLevel        string        `env:"LOG_LEVEL" envDefault:"info"`
+	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"15s"`
+	RequestTimeout  time.Duration `env:"REQUEST_TIMEOUT" envDefault:"30s"`
 }
 
-type DatabaseConfig struct {
-	Host               string
-	Port               string
-	User               string
-	Password           string
-	Name               string
-	SSLMode            string
-	MaxOpenConnections int
-	MaxIdleConnections int
-	MaxLifetimeMinutes int
+func (a App) IsProduction() bool { return a.Env == "production" }
+
+type Database struct {
+	URL             string        `env:"DATABASE_URL,required"`
+	MaxConns        int32         `env:"DATABASE_MAX_CONNS" envDefault:"10"`
+	MinConns        int32         `env:"DATABASE_MIN_CONNS" envDefault:"2"`
+	ConnMaxLifetime time.Duration `env:"DATABASE_CONN_MAX_LIFETIME" envDefault:"1h"`
+	MigrationsPath  string        `env:"DATABASE_MIGRATIONS_PATH" envDefault:"file://internal/db/migrations"`
+	AutoMigrate     bool          `env:"DATABASE_AUTO_MIGRATE" envDefault:"true"`
 }
 
-type RedisConfig struct {
-	Host     string
-	Port     string
-	Password string
-	DB       int
+type Auth struct {
+	JWTSecret              string        `env:"JWT_SECRET,required"`
+	AccessTokenTTL         time.Duration `env:"JWT_ACCESS_TOKEN_TTL" envDefault:"24h"`
+	AdminBootstrapEmail    string        `env:"ADMIN_BOOTSTRAP_EMAIL"`
+	AdminBootstrapPassword string        `env:"ADMIN_BOOTSTRAP_PASSWORD"`
 }
 
-type JWTConfig struct {
-	Secret            string
-	AccessTokenExpiry time.Duration
-	RefreshTokenExpiry time.Duration
+// CORS origins are always explicit and environment-supplied — never a
+// hardcoded frontend domain — because the same binary serves local dev,
+// staging, and production frontends from different origins.
+type CORS struct {
+	AllowedOrigins []string `env:"CORS_ALLOWED_ORIGINS,required" envSeparator:","`
 }
 
-type MailConfig struct {
-	Provider string // resend, sendgrid, smtp
-	APIKey   string
-	FromEmail string
-	FromName  string
-	Host     string
-	Port     int
-	Username string
-	Password string
+type RateLimit struct {
+	PublicRPS   float64 `env:"RATE_LIMIT_PUBLIC_RPS" envDefault:"2"`
+	PublicBurst int     `env:"RATE_LIMIT_PUBLIC_BURST" envDefault:"10"`
 }
 
-type StorageConfig struct {
-	Provider        string // s3, r2, local
-	AccessKeyID     string
-	SecretAccessKey string
-	BucketName      string
-	Region          string
-	Endpoint        string // For Cloudflare R2 or MinIO
+// Frontend holds the settings needed to call back into the Next.js frontend
+// when content changes, so editors see updates without waiting for the
+// frontend's own cache TTL to expire.
+type Frontend struct {
+	RevalidateURL     string        `env:"FRONTEND_REVALIDATE_URL"`
+	RevalidateSecret  string        `env:"FRONTEND_REVALIDATE_SECRET"`
+	RevalidateTimeout time.Duration `env:"FRONTEND_REVALIDATE_TIMEOUT" envDefault:"5s"`
 }
 
-type RateLimiterConfig struct {
-	Enabled   bool
-	MaxReqs   int
-	WindowSec int
+type Newsletter struct {
+	WebhookURL     string        `env:"NEWSLETTER_WEBHOOK_URL"`
+	WebhookToken   string        `env:"NEWSLETTER_WEBHOOK_TOKEN"`
+	WebhookTimeout time.Duration `env:"NEWSLETTER_WEBHOOK_TIMEOUT" envDefault:"5s"`
 }
 
-// LoadConfig reads configuration from .env file and environment variables.
-func LoadConfig() (*Config, error) {
-	// Load .env if present (ignore error if file doesn't exist)
-	_ = godotenv.Load()
+// Load reads a .env file when present (local development convenience only —
+// production deployments are expected to inject real environment variables)
+// then parses and validates the environment into a Config.
+func Load() (*Config, error) {
+	if err := godotenv.Load(); err != nil {
+		slog.Debug("no .env file loaded", "detail", err.Error())
+	}
 
-	cfg := &Config{
-		App: AppConfig{
-			Name:             getEnv("APP_NAME", "DextaAfrica-API"),
-			Environment:      getEnv("APP_ENV", "development"),
-			Port:             getEnv("APP_PORT", "8080"),
-			BaseURL:          getEnv("APP_BASE_URL", "http://localhost:8080"),
-			FrontendWebURL:   getEnv("FRONTEND_WEB_URL", "http://localhost:3000"),
-			FrontendAdminURL: getEnv("FRONTEND_ADMIN_URL", "http://localhost:3001"),
-			ReadTimeout:      getEnvDuration("APP_READ_TIMEOUT", 15*time.Second),
-			WriteTimeout:     getEnvDuration("APP_WRITE_TIMEOUT", 15*time.Second),
-		},
-		Database: DatabaseConfig{
-			Host:               getEnv("DB_HOST", "localhost"),
-			Port:               getEnv("DB_PORT", "5432"),
-			User:               getEnv("DB_USER", "postgres"),
-			Password:           getEnv("DB_PASSWORD", "postgres"),
-			Name:               getEnv("DB_NAME", "dexta_db"),
-			SSLMode:            getEnv("DB_SSLMODE", "disable"),
-			MaxOpenConnections: getEnvInt("DB_MAX_OPEN_CONNS", 25),
-			MaxIdleConnections: getEnvInt("DB_MAX_IDLE_CONNS", 10),
-			MaxLifetimeMinutes: getEnvInt("DB_MAX_LIFETIME_MINS", 30),
-		},
-		Redis: RedisConfig{
-			Host:     getEnv("REDIS_HOST", "localhost"),
-			Port:     getEnv("REDIS_PORT", "6379"),
-			Password: getEnv("REDIS_PASSWORD", ""),
-			DB:       getEnvInt("REDIS_DB", 0),
-		},
-		JWT: JWTConfig{
-			Secret:             getEnv("JWT_SECRET", "super-secret-dexta-africa-enterprise-key-2026"),
-			AccessTokenExpiry:  getEnvDuration("JWT_ACCESS_EXPIRY", 15*time.Minute),
-			RefreshTokenExpiry: getEnvDuration("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
-		},
-		Mail: MailConfig{
-			Provider:  getEnv("MAIL_PROVIDER", "smtp"),
-			APIKey:    getEnv("MAIL_API_KEY", ""),
-			FromEmail: getEnv("MAIL_FROM_EMAIL", "notifications@dextaafrica.com"),
-			FromName:  getEnv("MAIL_FROM_NAME", "Dexta Africa"),
-			Host:      getEnv("MAIL_HOST", "localhost"),
-			Port:      getEnvInt("MAIL_PORT", 1025), // Mailpit default
-			Username:  getEnv("MAIL_USERNAME", ""),
-			Password:  getEnv("MAIL_PASSWORD", ""),
-		},
-		Storage: StorageConfig{
-			Provider:        getEnv("STORAGE_PROVIDER", "local"),
-			AccessKeyID:     getEnv("STORAGE_ACCESS_KEY", ""),
-			SecretAccessKey: getEnv("STORAGE_SECRET_KEY", ""),
-			BucketName:      getEnv("STORAGE_BUCKET", "dexta-assets"),
-			Region:          getEnv("STORAGE_REGION", "auto"),
-			Endpoint:        getEnv("STORAGE_ENDPOINT", ""),
-		},
-		RateLimiter: RateLimiterConfig{
-			Enabled:   getEnvBool("RATE_LIMITER_ENABLED", true),
-			MaxReqs:   getEnvInt("RATE_LIMITER_MAX_REQS", 120),
-			WindowSec: getEnvInt("RATE_LIMITER_WINDOW_SEC", 60),
-		},
+	cfg := &Config{}
+	if err := env.Parse(cfg); err != nil {
+		return nil, fmt.Errorf("config: parse environment: %w", err)
+	}
+
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("config: %w", err)
 	}
 
 	return cfg, nil
 }
 
-func getEnv(key, defaultVal string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
+func (c *Config) validate() error {
+	if len(c.Auth.JWTSecret) < 32 {
+		return fmt.Errorf("JWT_SECRET must be at least 32 characters")
 	}
-	return defaultVal
-}
-
-func getEnvInt(key string, defaultVal int) int {
-	if val := os.Getenv(key); val != "" {
-		if intVal, err := strconv.Atoi(val); err == nil {
-			return intVal
+	if c.App.Port <= 0 || c.App.Port > 65535 {
+		return fmt.Errorf("APP_PORT must be between 1 and 65535")
+	}
+	for _, origin := range c.CORS.AllowedOrigins {
+		if origin == "" {
+			return fmt.Errorf("CORS_ALLOWED_ORIGINS contains an empty origin")
 		}
 	}
-	return defaultVal
-}
-
-func getEnvBool(key string, defaultVal bool) bool {
-	if val := os.Getenv(key); val != "" {
-		if boolVal, err := strconv.ParseBool(val); err == nil {
-			return boolVal
-		}
+	if (c.Auth.AdminBootstrapEmail == "") != (c.Auth.AdminBootstrapPassword == "") {
+		return fmt.Errorf("ADMIN_BOOTSTRAP_EMAIL and ADMIN_BOOTSTRAP_PASSWORD must be set together")
 	}
-	return defaultVal
+	return nil
 }
-
-func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
-	if val := os.Getenv(key); val != "" {
-		if dur, err := time.ParseDuration(val); err == nil {
-			return dur
-		}
-	}
-	return defaultVal
-}
-
