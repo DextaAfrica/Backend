@@ -174,3 +174,4 @@ func (w *OutboxWorker) dispatch(ctx context.Context, tx pgx.Tx, id, eventType st
 		_, _ = tx.Exec(ctx, updateSuccessQuery, now, id)
 	}
 }
+
