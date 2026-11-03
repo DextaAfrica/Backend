@@ -10,7 +10,7 @@ import (
 // it can be logged after the fact — http.ResponseWriter doesn't expose it.
 type statusRecorder struct {
 	http.ResponseWriter
-	status      int
+	status       int
 	bytesWritten int
 }
 

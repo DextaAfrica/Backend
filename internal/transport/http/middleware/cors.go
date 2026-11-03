@@ -1,8 +1,9 @@
 package middleware
 
 import (
-	"github.com/go-chi/cors"
 	"net/http"
+
+	"github.com/go-chi/cors"
 )
 
 // CORS builds the CORS middleware from configured allowed origins — never a

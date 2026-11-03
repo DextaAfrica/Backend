@@ -8,9 +8,9 @@ import (
 type EmploymentType string
 
 const (
-	EmploymentTypeFullTime EmploymentType = "full_time"
-	EmploymentTypePartTime EmploymentType = "part_time"
-	EmploymentTypeContract EmploymentType = "contract"
+	EmploymentTypeFullTime   EmploymentType = "full_time"
+	EmploymentTypePartTime   EmploymentType = "part_time"
+	EmploymentTypeContract   EmploymentType = "contract"
 	EmploymentTypeInternship EmploymentType = "internship"
 )
 

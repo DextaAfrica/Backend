@@ -26,22 +26,22 @@ type galleryImageResponse struct {
 }
 
 type developmentResponse struct {
-	ID             string                  `json:"id"`
-	Slug           string                  `json:"slug"`
-	Name           string                  `json:"name"`
-	Summary        string                  `json:"summary"`
-	Body           map[string]any          `json:"body"`
-	HeroImageURL   string                  `json:"heroImageUrl"`
-	Gallery        []galleryImageResponse  `json:"gallery"`
-	Location       string                  `json:"location"`
-	Status         string                  `json:"status"`
-	Featured       bool                    `json:"featured"`
-	SEOTitle       string                  `json:"seoTitle"`
-	SEODescription string                  `json:"seoDescription"`
-	Published      bool                    `json:"published"`
-	PublishedAt    *time.Time              `json:"publishedAt,omitempty"`
-	DisplayOrder   int                     `json:"displayOrder"`
-	UpdatedAt      time.Time               `json:"updatedAt"`
+	ID             string                 `json:"id"`
+	Slug           string                 `json:"slug"`
+	Name           string                 `json:"name"`
+	Summary        string                 `json:"summary"`
+	Body           map[string]any         `json:"body"`
+	HeroImageURL   string                 `json:"heroImageUrl"`
+	Gallery        []galleryImageResponse `json:"gallery"`
+	Location       string                 `json:"location"`
+	Status         string                 `json:"status"`
+	Featured       bool                   `json:"featured"`
+	SEOTitle       string                 `json:"seoTitle"`
+	SEODescription string                 `json:"seoDescription"`
+	Published      bool                   `json:"published"`
+	PublishedAt    *time.Time             `json:"publishedAt,omitempty"`
+	DisplayOrder   int                    `json:"displayOrder"`
+	UpdatedAt      time.Time              `json:"updatedAt"`
 }
 
 func toDevelopmentResponse(d *domain.Development) developmentResponse {

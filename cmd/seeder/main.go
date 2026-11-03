@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -15,10 +16,16 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("fatal seeder error", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("failed to load configuration", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	logging.Setup(cfg.App)
@@ -29,16 +36,14 @@ func main() {
 
 	if cfg.Database.AutoMigrate {
 		if err := db.Migrate(cfg.Database.URL, cfg.Database.MigrationsPath); err != nil {
-			slog.Error("failed to run database migrations", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("run migrations: %w", err)
 		}
 		slog.Info("database migrations verified")
 	}
 
 	pool, err := db.Connect(ctx, cfg.Database)
 	if err != nil {
-		slog.Error("failed to connect to database", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("connect database: %w", err)
 	}
 	defer pool.Close()
 
@@ -46,6 +51,7 @@ func main() {
 	seedBaselinePages(ctx, pageRepo)
 
 	slog.Info("seeder completed successfully")
+	return nil
 }
 
 func seedBaselinePages(ctx context.Context, repo *postgres.PageRepository) {

@@ -4,9 +4,9 @@ package domain
 // listing (portfolio, journal, careers, enquiries). Handlers parse query
 // params into this; repositories translate it into LIMIT/OFFSET.
 type ListParams struct {
-	Page            int
-	PerPage         int
-	PublishedOnly   bool
+	Page               int
+	PerPage            int
+	PublishedOnly      bool
 	IncludeUnpublished bool
 }
 

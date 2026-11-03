@@ -18,15 +18,15 @@ import (
 type Code string
 
 const (
-	CodeValidation      Code = "VALIDATION_ERROR"
-	CodeNotFound        Code = "NOT_FOUND"
-	CodeConflict        Code = "CONFLICT"
-	CodeUnauthorized    Code = "UNAUTHORIZED"
-	CodeForbidden       Code = "FORBIDDEN"
-	CodeRateLimited     Code = "RATE_LIMITED"
-	CodeInternal        Code = "INTERNAL_ERROR"
-	CodeUnavailable     Code = "SERVICE_UNAVAILABLE"
-	CodeBadRequest      Code = "BAD_REQUEST"
+	CodeValidation   Code = "VALIDATION_ERROR"
+	CodeNotFound     Code = "NOT_FOUND"
+	CodeConflict     Code = "CONFLICT"
+	CodeUnauthorized Code = "UNAUTHORIZED"
+	CodeForbidden    Code = "FORBIDDEN"
+	CodeRateLimited  Code = "RATE_LIMITED"
+	CodeInternal     Code = "INTERNAL_ERROR"
+	CodeUnavailable  Code = "SERVICE_UNAVAILABLE"
+	CodeBadRequest   Code = "BAD_REQUEST"
 )
 
 // Error is the canonical application error. Message is always safe to show

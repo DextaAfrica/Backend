@@ -8,9 +8,9 @@ import (
 type DevelopmentStatus string
 
 const (
-	DevelopmentStatusPlanning           DevelopmentStatus = "planning"
-	DevelopmentStatusUnderConstruction  DevelopmentStatus = "under_construction"
-	DevelopmentStatusCompleted          DevelopmentStatus = "completed"
+	DevelopmentStatusPlanning          DevelopmentStatus = "planning"
+	DevelopmentStatusUnderConstruction DevelopmentStatus = "under_construction"
+	DevelopmentStatusCompleted         DevelopmentStatus = "completed"
 )
 
 func (s DevelopmentStatus) Valid() bool {

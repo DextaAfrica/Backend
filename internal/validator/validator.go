@@ -5,6 +5,7 @@
 package validator
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -48,8 +49,8 @@ func Struct(dto any) *apperror.Error {
 		return nil
 	}
 
-	fieldErrs, ok := err.(pv.ValidationErrors)
-	if !ok {
+	var fieldErrs pv.ValidationErrors
+	if !errors.As(err, &fieldErrs) {
 		return apperror.Validation("invalid request", nil)
 	}
 

@@ -15,9 +15,9 @@ import (
 )
 
 type AuthService struct {
-	admins      domain.AdminRepository
-	jwtSecret   string
-	accessTTL   time.Duration
+	admins    domain.AdminRepository
+	jwtSecret string
+	accessTTL time.Duration
 }
 
 func NewAuthService(admins domain.AdminRepository, jwtSecret string, accessTTL time.Duration) *AuthService {
