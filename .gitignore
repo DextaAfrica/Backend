@@ -1,0 +1,12 @@
+.env
+bin/
+tmp/
+/api
+*.log
+.DS_Store
+*.exe
+*.dll
+*.so
+*.dylib
+.idea/
+.vscode/

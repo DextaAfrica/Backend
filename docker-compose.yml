@@ -1,0 +1,162 @@
+# ==============================================================================
+# Dexta Africa Enterprise - Production Multi-Service Orchestration Stack
+# Fully containerized, network-isolated, zero-trust infrastructure
+# ==============================================================================
+version: "3.8"
+
+services:
+  # ----------------------------------------------------------------------------
+  # Primary PostgreSQL 16 Relational Engine
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: dexta_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dexta}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dexta_enterprise_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-dexta}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - dexta_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dexta} -d ${POSTGRES_DB:-dexta}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+        reservations:
+          cpus: "0.25"
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+
+  # ----------------------------------------------------------------------------
+  # Redis 7 Distributed Cache & Lock Coordinator
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: dexta_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - dexta_internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+
+  # ----------------------------------------------------------------------------
+  # Go Core Enterprise Backend API (Distroless Non-Root Runtime)
+  # ----------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dexta_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_ENV: production
+      APP_PORT: 8080
+      DATABASE_URL: postgres://${POSTGRES_USER:-dexta}:${POSTGRES_PASSWORD:-dexta_enterprise_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-dexta}?sslmode=disable
+      DATABASE_MAX_CONNS: 25
+      DATABASE_MIN_CONNS: 5
+      JWT_SECRET: ${JWT_SECRET:-dexta-africa-enterprise-secret-key-at-least-32-chars-long}
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:8080
+    ports:
+      - "8080:8080"
+    networks:
+      - dexta_internal
+      - dexta_public
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1024M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+
+  # ----------------------------------------------------------------------------
+  # Next.js 14 Enterprise Admin Portal (Standalone Non-Root Runtime)
+  # ----------------------------------------------------------------------------
+  admin-portal:
+    build:
+      context: ../Admin-portal
+      dockerfile: Dockerfile
+    container_name: dexta_admin_portal
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      BACKEND_API_URL: http://api:8080
+      BACKEND_JWT_SECRET: ${JWT_SECRET:-dexta-africa-enterprise-secret-key-at-least-32-chars-long}
+      DATABASE_URL: file:/app/data/admin_portal.db
+      APP_SECRET: ${APP_SECRET:-dexta_africa_portal_super_secure_enterprise_secret_key_2026_xyz}
+      PORTAL_NAME: "Dexta Africa Operations Portal"
+      ADMIN_REGISTRATION_PASSCODE: ${ADMIN_REGISTRATION_PASSCODE:-DEXTA-2026}
+    volumes:
+      - admin_portal_data:/app/data
+    ports:
+      - "3000:3000"
+    networks:
+      - dexta_public
+    depends_on:
+      - api
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1024M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+
+# ------------------------------------------------------------------------------
+# Persistent Storage Volumes
+# ------------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    name: dexta_postgres_data
+  redis_data:
+    name: dexta_redis_data
+  admin_portal_data:
+    name: dexta_admin_portal_data
+
+# ------------------------------------------------------------------------------
+# Network Isolation Architecture
+# ------------------------------------------------------------------------------
+networks:
+  # Internal network: database and cache are never exposed to public routing
+  dexta_internal:
+    internal: true
+    name: dexta_internal
+  # Public ingress network: handles traffic between web edge and application containers
+  dexta_public:
+    name: dexta_public
