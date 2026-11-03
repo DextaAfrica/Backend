@@ -3,6 +3,7 @@ package middleware
 import (
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,13 +84,20 @@ func (l *IPRateLimiter) Middleware(next http.Handler) http.Handler {
 
 func clientIP(r *http.Request) string {
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		if idx := len(fwd); idx > 0 {
-			for i, c := range fwd {
-				if c == ',' {
-					return fwd[:i]
-				}
+		for i, c := range fwd {
+			if c == ',' {
+				fwd = fwd[:i]
+				break
 			}
-			return fwd
+		}
+		candidate := strings.TrimSpace(fwd)
+		if ip := net.ParseIP(candidate); ip != nil {
+			return ip.String()
+		}
+	}
+	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
+		if ip := net.ParseIP(realIP); ip != nil {
+			return ip.String()
 		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

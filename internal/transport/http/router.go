@@ -33,17 +33,25 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler 
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recover)
+	r.Use(middleware.SecurityHeaders)
 	r.Use(middleware.Logging)
 	r.Use(chimiddleware.Timeout(cfg.App.RequestTimeout))
 	r.Use(middleware.CORS(cfg.CORS.AllowedOrigins))
 
 	publicLimiter := middleware.NewIPRateLimiter(cfg.RateLimit.PublicRPS, cfg.RateLimit.PublicBurst)
+	// Stricter rate limiter for authentication to prevent brute force / credential stuffing attacks:
+	// 1 request every 5 seconds per IP with a burst of 5.
+	authLimiter := middleware.NewIPRateLimiter(0.2, 5)
 	requireAdmin := middleware.RequireAdmin(cfg.Auth.JWTSecret)
 
 	r.Get("/healthz", h.Health.Live)
 	r.Get("/readyz", h.Health.Ready)
 
-	r.Post("/auth/login", h.Auth.Login)
+	// Authentication endpoint protected by strict brute-force rate limiter
+	r.Group(func(r chi.Router) {
+		r.Use(authLimiter.Middleware)
+		r.Post("/auth/login", h.Auth.Login)
+	})
 
 	// Public read surface consumed by the Next.js frontend.
 	r.Route("/content", func(r chi.Router) {
