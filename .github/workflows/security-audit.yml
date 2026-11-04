@@ -21,7 +21,7 @@ jobs:
     name: GoSec Static Security Analysis
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
@@ -38,7 +38,7 @@ jobs:
     name: Go Vulnerability Database Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v5
         with:
@@ -59,7 +59,7 @@ jobs:
     name: Trivy Container Image Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build local container image
         run: docker build -t dexta-backend:audit -f Dockerfile .
