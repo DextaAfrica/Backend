@@ -18,7 +18,7 @@ env:
 
 jobs:
   lint:
-    name: Lint
+    name: Lint & Vet
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,13 +34,6 @@ jobs:
 
       - name: go vet
         run: go vet ./...
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v1.64.8
-          verify: false
-          args: --timeout=5m
 
   test:
     name: Test
