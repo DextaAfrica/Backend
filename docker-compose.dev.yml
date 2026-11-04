@@ -25,6 +25,9 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     env_file: .env
     environment:
       APP_ENV: development
