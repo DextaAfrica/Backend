@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: dexta
       POSTGRES_DB: dexta
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
     healthcheck:
@@ -25,6 +25,9 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     env_file: .env
     environment:
       APP_ENV: development

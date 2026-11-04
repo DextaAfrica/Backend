@@ -10,9 +10,11 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/DextaAfrica/Backend/internal/apperror"
 	"github.com/DextaAfrica/Backend/internal/config"
 	"github.com/DextaAfrica/Backend/internal/transport/http/handlers"
 	"github.com/DextaAfrica/Backend/internal/transport/http/middleware"
+	"github.com/DextaAfrica/Backend/internal/transport/http/response"
 )
 
 // Handlers bundles every handler the router needs. Built once in main.go
@@ -43,6 +45,34 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler 
 	// 1 request every 5 seconds per IP with a burst of 5.
 	authLimiter := middleware.NewIPRateLimiter(0.2, 5)
 	requireAdmin := middleware.RequireAdmin(cfg.Auth.JWTSecret)
+
+	// Canonical JSON 404 and 405 error boundary handlers
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		response.Error(w, r, apperror.NotFound("endpoint"))
+	})
+	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+		response.Error(w, r, apperror.New(apperror.CodeBadRequest, "method not allowed"))
+	})
+
+	// Root operational status endpoint
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		response.JSON(w, http.StatusOK, map[string]any{
+			"status":  "operational",
+			"service": "Dexta Africa Enterprise API",
+			"version": "1.0.0",
+			"docs": map[string]string{
+				"health": "/healthz",
+				"ready":  "/readyz",
+			},
+		})
+	})
+
+	// Browser favicon request handler (suppresses 404 noise and satisfies CSP)
+	r.Get("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/x-icon")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		response.NoContent(w)
+	})
 
 	r.Get("/healthz", h.Health.Live)
 	r.Get("/readyz", h.Health.Ready)
