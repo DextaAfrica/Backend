@@ -22,8 +22,8 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		// Restrict referrer data leakage across origins
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
-		// Strict API Content-Security-Policy: deny arbitrary execution and framing
-		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+		// Strict API Content-Security-Policy: deny arbitrary execution and framing, permit favicon/self-hosted images
+		h.Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 
 		// HTTP Strict Transport Security: enforce HTTPS for 2 years with subdomains and preload
 		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
