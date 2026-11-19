@@ -54,6 +54,7 @@ func (h *StorageHandler) DirectAdminUpload(w http.ResponseWriter, r *http.Reques
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
 
 	// 32MB max memory buffer before spooling to temp file
+	// #nosec G120 -- request body is bounded by http.MaxBytesReader above
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		response.Error(w, r, apperror.New(apperror.CodeBadRequest, "failed to parse multipart form: "+err.Error()))
 		return
@@ -178,6 +179,7 @@ func (h *StorageHandler) DirectPublicResume(w http.ResponseWriter, r *http.Reque
 	const maxResumeBytes = 25 << 20 // 25MB max request size
 	r.Body = http.MaxBytesReader(w, r.Body, maxResumeBytes)
 
+	// #nosec G120 -- request body is bounded by http.MaxBytesReader above
 	if err := r.ParseMultipartForm(15 << 20); err != nil {
 		response.Error(w, r, apperror.New(apperror.CodeBadRequest, "failed to parse multipart form: "+err.Error()))
 		return
