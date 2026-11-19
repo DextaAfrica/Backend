@@ -8,7 +8,6 @@ package config
 
 import (
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -107,13 +106,17 @@ func (s Storage) BasePublicURL() string {
 // production deployments are expected to inject real environment variables)
 // then parses and validates the environment into a Config.
 func Load() (*Config, error) {
-	if err := godotenv.Load(); err != nil {
-		slog.Debug("no .env file loaded", "detail", err.Error())
-	}
+	// Attempt loading environment files from local or parent directory
+	_ = godotenv.Load(".env", ".env-prod", "../.env", "../.env-prod")
 
 	cfg := &Config{}
 	if err := env.Parse(cfg); err != nil {
 		return nil, fmt.Errorf("config: parse environment: %w", err)
+	}
+
+	// Canonicalize CORS allowed origins (strip trailing slashes to match browser Origin headers)
+	for i := range cfg.CORS.AllowedOrigins {
+		cfg.CORS.AllowedOrigins[i] = strings.TrimRight(strings.TrimSpace(cfg.CORS.AllowedOrigins[i]), "/")
 	}
 
 	if err := cfg.validate(); err != nil {

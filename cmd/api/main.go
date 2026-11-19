@@ -77,8 +77,9 @@ func run() error {
 		Newsletter: handlers.NewNewsletterHandler(services.Newsletter),
 		Forms:      handlers.NewFormHandler(services.Forms),
 		Users:      handlers.NewUserHandler(services.User),
-		Audit:      handlers.NewAuditHandler(services.Audit),
-		Storage:    handlers.NewStorageHandler(services.Storage),
+		Audit:              handlers.NewAuditHandler(services.Audit),
+		Storage:            handlers.NewStorageHandler(services.Storage),
+		ProductionApproval: handlers.NewProductionApprovalHandler(services.ProductionApproval),
 	}
 
 	router := transporthttp.NewRouter(cfg, pool, h)
@@ -128,20 +129,22 @@ type repositories struct {
 	Enquiries   *postgres.EnquiryRepository
 	Subscribers *postgres.SubscriberRepository
 	Forms       *postgres.FormRepository
-	Audit       *postgres.AuditRepository
+	Audit               *postgres.AuditRepository
+	ProductionApprovals *postgres.ProductionApprovalRepository
 }
 
 func buildRepositories(pool *pgxpool.Pool) repositories {
 	return repositories{
-		Admins:      postgres.NewAdminRepository(pool),
-		Pages:       postgres.NewPageRepository(pool),
-		Portfolio:   postgres.NewDevelopmentRepository(pool),
-		Journal:     postgres.NewArticleRepository(pool),
-		Careers:     postgres.NewCareerListingRepository(pool),
-		Enquiries:   postgres.NewEnquiryRepository(pool),
-		Subscribers: postgres.NewSubscriberRepository(pool),
-		Forms:       postgres.NewFormRepository(pool),
-		Audit:       postgres.NewAuditRepository(pool),
+		Admins:              postgres.NewAdminRepository(pool),
+		Pages:               postgres.NewPageRepository(pool),
+		Portfolio:           postgres.NewDevelopmentRepository(pool),
+		Journal:             postgres.NewArticleRepository(pool),
+		Careers:             postgres.NewCareerListingRepository(pool),
+		Enquiries:           postgres.NewEnquiryRepository(pool),
+		Subscribers:         postgres.NewSubscriberRepository(pool),
+		Forms:               postgres.NewFormRepository(pool),
+		Audit:               postgres.NewAuditRepository(pool),
+		ProductionApprovals: postgres.NewProductionApprovalRepository(pool),
 	}
 }
 
@@ -157,8 +160,9 @@ type services struct {
 	Newsletter *service.NewsletterService
 	Forms      *service.FormService
 	User       *service.UserService
-	Audit      *service.AuditService
-	Storage    storage.Service
+	Audit              *service.AuditService
+	Storage            storage.Service
+	ProductionApproval *service.ProductionApprovalService
 }
 
 func buildServices(cfg *config.Config, repos repositories) services {
@@ -167,16 +171,17 @@ func buildServices(cfg *config.Config, repos repositories) services {
 	storageService := storage.NewS3Service(cfg.Storage)
 
 	return services{
-		Auth:       service.NewAuthService(repos.Admins, cfg.Auth.JWTSecret, cfg.Auth.AccessTokenTTL),
-		Content:    service.NewContentService(repos.Pages, revalidator),
-		Portfolio:  service.NewPortfolioService(repos.Portfolio, revalidator),
-		Journal:    service.NewJournalService(repos.Journal, revalidator),
-		Career:     service.NewCareerService(repos.Careers, revalidator),
-		Enquiry:    service.NewEnquiryService(repos.Enquiries),
-		Newsletter: service.NewNewsletterService(repos.Subscribers, forwarder),
-		Forms:      service.NewFormService(repos.Forms),
-		User:       service.NewUserService(repos.Admins),
-		Audit:      service.NewAuditService(repos.Audit),
-		Storage:    storageService,
+		Auth:               service.NewAuthService(repos.Admins, cfg.Auth.JWTSecret, cfg.Auth.AccessTokenTTL),
+		Content:            service.NewContentService(repos.Pages, revalidator),
+		Portfolio:          service.NewPortfolioService(repos.Portfolio, revalidator),
+		Journal:            service.NewJournalService(repos.Journal, revalidator),
+		Career:             service.NewCareerService(repos.Careers, revalidator),
+		Enquiry:            service.NewEnquiryService(repos.Enquiries),
+		Newsletter:         service.NewNewsletterService(repos.Subscribers, forwarder),
+		Forms:              service.NewFormService(repos.Forms),
+		User:               service.NewUserService(repos.Admins),
+		Audit:              service.NewAuditService(repos.Audit),
+		Storage:            storageService,
+		ProductionApproval: service.NewProductionApprovalService(repos.ProductionApprovals),
 	}
 }

@@ -30,8 +30,9 @@ type Handlers struct {
 	Newsletter *handlers.NewsletterHandler
 	Forms      *handlers.FormHandler
 	Users      *handlers.UserHandler
-	Audit      *handlers.AuditHandler
-	Storage    *handlers.StorageHandler
+	Audit              *handlers.AuditHandler
+	Storage            *handlers.StorageHandler
+	ProductionApproval *handlers.ProductionApprovalHandler
 }
 
 func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler {
@@ -197,6 +198,13 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler 
 			r.Post("/", h.Storage.DirectAdminUpload)
 			r.Delete("/", h.Storage.DeleteAdminUpload)
 			r.Get("/private", h.Storage.PresignDownloadPrivate)
+		})
+
+		r.Route("/production-releases", func(r chi.Router) {
+			r.Get("/", h.ProductionApproval.List)
+			r.Post("/", h.ProductionApproval.Create)
+			r.Get("/{id}", h.ProductionApproval.Get)
+			r.Patch("/{id}/decision", h.ProductionApproval.Decide)
 		})
 	})
 

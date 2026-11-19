@@ -271,13 +271,13 @@ func (r *FormRepository) GetDemographics(ctx context.Context, formID string) (*d
 		GROUP BY label
 		ORDER BY cnt DESC`, formID)
 	if err == nil {
-		defer catRows.Close()
 		for catRows.Next() {
 			var dc domain.DemographicCount
 			if err := catRows.Scan(&dc.Label, &dc.Count); err == nil {
 				demo.ByCategory = append(demo.ByCategory, dc)
 			}
 		}
+		catRows.Close()
 	}
 
 	// By attendance mode
@@ -288,13 +288,13 @@ func (r *FormRepository) GetDemographics(ctx context.Context, formID string) (*d
 		GROUP BY label
 		ORDER BY cnt DESC`, formID)
 	if err == nil {
-		defer modeRows.Close()
 		for modeRows.Next() {
 			var dc domain.DemographicCount
 			if err := modeRows.Scan(&dc.Label, &dc.Count); err == nil {
 				demo.ByAttendanceMode = append(demo.ByAttendanceMode, dc)
 			}
 		}
+		modeRows.Close()
 	}
 
 	// Top organizations
@@ -306,13 +306,13 @@ func (r *FormRepository) GetDemographics(ctx context.Context, formID string) (*d
 		ORDER BY cnt DESC
 		LIMIT 6`, formID)
 	if err == nil {
-		defer orgRows.Close()
 		for orgRows.Next() {
 			var dc domain.DemographicCount
 			if err := orgRows.Scan(&dc.Label, &dc.Count); err == nil {
 				demo.TopOrganizations = append(demo.TopOrganizations, dc)
 			}
 		}
+		orgRows.Close()
 	}
 
 	// Recent submissions (last 10)
@@ -322,13 +322,13 @@ func (r *FormRepository) GetDemographics(ctx context.Context, formID string) (*d
 		ORDER BY created_at DESC
 		LIMIT 10`, formID)
 	if err == nil {
-		defer recentRows.Close()
 		for recentRows.Next() {
 			s, err := r.scanSubmission(recentRows)
 			if err == nil {
 				demo.RecentSubmissions = append(demo.RecentSubmissions, *s)
 			}
 		}
+		recentRows.Close()
 	}
 
 	return demo, nil

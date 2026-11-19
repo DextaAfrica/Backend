@@ -61,6 +61,9 @@ func (r *AuditRepository) List(ctx context.Context, params domain.ListParams) (d
 		_ = json.Unmarshal(metaBytes, &l.Metadata)
 		items = append(items, l)
 	}
+	if err := rows.Err(); err != nil {
+		return domain.PageResult[domain.AuditLog]{}, fmt.Errorf("audit_repo: rows: %w", err)
+	}
 
 	return domain.PageResult[domain.AuditLog]{
 		Items:      items,
