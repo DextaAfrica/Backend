@@ -47,10 +47,10 @@ func NewS3Service(cfg config.Storage) *S3Service {
 	}
 
 	client := s3.New(s3.Options{
-		Region:           region,
-		EndpointResolver: s3.EndpointResolverFromURL(endpoint),
-		Credentials:      credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
-		UsePathStyle:     true, // Recommended for Cloudflare R2 custom endpoint addressing
+		BaseEndpoint: aws.String(endpoint),
+		Region:       region,
+		Credentials:  credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
+		UsePathStyle: true, // Recommended for Cloudflare R2 custom endpoint addressing
 	})
 
 	presignClient := s3.NewPresignClient(client)
@@ -124,7 +124,7 @@ func (s *S3Service) Upload(ctx context.Context, key string, body io.Reader, size
 		ContentType: aws.String(contentType),
 	}
 	if size > 0 {
-		input.ContentLength = size
+		input.ContentLength = aws.Int64(size)
 	}
 
 	_, err := s.client.PutObject(ctx, input)
