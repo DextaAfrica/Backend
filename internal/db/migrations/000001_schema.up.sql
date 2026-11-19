@@ -1,23 +1,30 @@
 -- Full database schema for the Dexta Africa backend, applied as a single
--- migration. Kept as one file deliberately: this project ships schema
+-- atomic migration. Kept as one file deliberately: this project ships schema
 -- changes as one reviewed, atomic script rather than a long chain of
 -- incremental migrations, so the whole data model can be read top to bottom
--- in one place. Future schema changes should add a new
--- NNNNNN_description.up.sql / .down.sql pair rather than editing this file,
--- once it has shipped to any real environment.
+-- in one place.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- ── Admins ───────────────────────────────────────────────────────────────
--- Single-role CMS admin accounts. See docs/ARCHITECTURE.md for why there is
--- no roles/permissions model yet.
+-- ── Admins & Team Members ──────────────────────────────────────────────────
+-- Comprehensive administrator and employee identity store with role-based
+-- routing, departmental tagging, and operational telemetry.
 CREATE TABLE admins (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email          TEXT NOT NULL UNIQUE,
     password_hash  TEXT NOT NULL,
+    full_name      TEXT NOT NULL DEFAULT '',
+    role           TEXT NOT NULL DEFAULT 'ADMIN',
+    department     TEXT NOT NULL DEFAULT 'OPERATIONS',
+    job_title      TEXT NOT NULL DEFAULT '',
+    phone          TEXT NOT NULL DEFAULT '',
+    status         TEXT NOT NULL DEFAULT 'ACTIVE',
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX idx_admins_role ON admins (role);
+CREATE INDEX idx_admins_department ON admins (department);
 
 -- ── Pages ────────────────────────────────────────────────────────────────
 -- Flexible, JSONB-bodied content for every singleton editorial page (home,
@@ -36,7 +43,7 @@ CREATE TABLE pages (
 
 CREATE INDEX idx_pages_key ON pages (key);
 
--- ── Portfolio developments ───────────────────────────────────────────────
+-- ── Portfolio Developments ───────────────────────────────────────────────
 CREATE TABLE portfolio_developments (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     slug              TEXT NOT NULL UNIQUE,
@@ -61,7 +68,7 @@ CREATE TABLE portfolio_developments (
 CREATE INDEX idx_portfolio_slug ON portfolio_developments (slug);
 CREATE INDEX idx_portfolio_published ON portfolio_developments (published, display_order);
 
--- ── Journal articles ─────────────────────────────────────────────────────
+-- ── Journal Articles ─────────────────────────────────────────────────────
 CREATE TABLE journal_articles (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     slug              TEXT NOT NULL UNIQUE,
@@ -82,24 +89,43 @@ CREATE TABLE journal_articles (
 CREATE INDEX idx_journal_slug ON journal_articles (slug);
 CREATE INDEX idx_journal_published ON journal_articles (published, published_at DESC);
 
--- ── Career listings ──────────────────────────────────────────────────────
+-- ── Career Listings ──────────────────────────────────────────────────────
 CREATE TABLE career_listings (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    slug             TEXT NOT NULL UNIQUE,
-    title            TEXT NOT NULL,
-    department       TEXT NOT NULL DEFAULT '',
-    location         TEXT NOT NULL DEFAULT '',
-    employment_type  TEXT NOT NULL DEFAULT 'full_time',
-    description      JSONB NOT NULL DEFAULT '{}'::jsonb,
-    published        BOOLEAN NOT NULL DEFAULT false,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug                  TEXT NOT NULL UNIQUE,
+    title                 TEXT NOT NULL,
+    department            TEXT NOT NULL DEFAULT '',
+    location              TEXT NOT NULL DEFAULT '',
+    employment_type       TEXT NOT NULL DEFAULT 'full_time',
+    description           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status                TEXT NOT NULL DEFAULT 'open',
+    applicant_click_count INTEGER NOT NULL DEFAULT 0,
+    published             BOOLEAN NOT NULL DEFAULT false,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_career_listings_slug ON career_listings (slug);
 CREATE INDEX idx_career_listings_published ON career_listings (published);
+CREATE INDEX idx_career_listings_status ON career_listings (status);
 
--- ── Enquiries ────────────────────────────────────────────────────────────
+-- ── Career Inquiries & Applications ──────────────────────────────────────
+CREATE TABLE career_inquiries (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    career_listing_id  UUID NOT NULL REFERENCES career_listings(id) ON DELETE CASCADE,
+    applicant_name     TEXT NOT NULL,
+    applicant_email    TEXT NOT NULL,
+    applicant_phone    TEXT NOT NULL DEFAULT '',
+    resume_url         TEXT NOT NULL DEFAULT '',
+    cover_letter       TEXT NOT NULL DEFAULT '',
+    source             TEXT NOT NULL DEFAULT 'website',
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_career_inquiries_listing_id ON career_inquiries (career_listing_id);
+CREATE INDEX idx_career_inquiries_created_at ON career_inquiries (created_at DESC);
+
+-- ── Enquiries & Pipeline Inquiries ───────────────────────────────────────
 CREATE TABLE enquiries (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name         TEXT NOT NULL,
@@ -110,13 +136,13 @@ CREATE TABLE enquiries (
     source_page  TEXT NOT NULL DEFAULT '',
     status       TEXT NOT NULL DEFAULT 'new',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT chk_enquiry_status CHECK (status IN ('new', 'read', 'archived'))
+    CONSTRAINT chk_enquiry_status CHECK (status IN ('new', 'read', 'in_progress', 'resolved', 'archived'))
 );
 
 CREATE INDEX idx_enquiries_created_at ON enquiries (created_at DESC);
 CREATE INDEX idx_enquiries_status ON enquiries (status);
 
--- ── Newsletter subscribers ───────────────────────────────────────────────
+-- ── Newsletter Subscribers ───────────────────────────────────────────────
 CREATE TABLE newsletter_subscribers (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email            TEXT NOT NULL UNIQUE,
@@ -128,6 +154,47 @@ CREATE TABLE newsletter_subscribers (
 );
 
 CREATE INDEX idx_newsletter_email ON newsletter_subscribers (email);
+
+-- ── Custom Forms and Registration Portals ─────────────────────────────────
+CREATE TABLE custom_forms (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug             TEXT NOT NULL UNIQUE,
+    title            TEXT NOT NULL,
+    description      TEXT NOT NULL DEFAULT '',
+    form_type        TEXT NOT NULL DEFAULT 'event',
+    status           TEXT NOT NULL DEFAULT 'active',
+    cover_image_url  TEXT NOT NULL DEFAULT '',
+    event_date       TIMESTAMPTZ,
+    event_location   TEXT NOT NULL DEFAULT '',
+    fields           JSONB NOT NULL DEFAULT '[]'::jsonb,
+    metadata         JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_custom_forms_slug ON custom_forms (slug);
+CREATE INDEX idx_custom_forms_type ON custom_forms (form_type);
+
+CREATE TABLE form_submissions (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    form_id          UUID NOT NULL REFERENCES custom_forms(id) ON DELETE CASCADE,
+    full_name        TEXT NOT NULL,
+    email            TEXT NOT NULL,
+    phone            TEXT NOT NULL DEFAULT '',
+    company          TEXT NOT NULL DEFAULT '',
+    job_title        TEXT NOT NULL DEFAULT '',
+    category         TEXT NOT NULL DEFAULT 'Attendee',
+    attendance_mode  TEXT NOT NULL DEFAULT 'in-person',
+    answers          JSONB NOT NULL DEFAULT '{}'::jsonb,
+    notes            TEXT NOT NULL DEFAULT '',
+    status           TEXT NOT NULL DEFAULT 'registered',
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_form_submissions_form_id ON form_submissions (form_id);
+CREATE INDEX idx_form_submissions_email ON form_submissions (email);
+CREATE INDEX idx_form_submissions_category ON form_submissions (category);
+CREATE INDEX idx_form_submissions_created_at ON form_submissions (created_at);
 
 -- ── Transactional Outbox (Zero Data Loss) ──────────────────────────────────
 CREATE TABLE outbox_events (
@@ -148,7 +215,25 @@ CREATE TABLE outbox_events (
 
 CREATE INDEX idx_outbox_status ON outbox_events (status, created_at);
 
--- ── updated_at maintenance ───────────────────────────────────────────────
+-- ── Immutable Enterprise Audit Logs ──────────────────────────────────────
+CREATE TABLE audit_logs (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_id       TEXT,
+    actor_email    TEXT,
+    action         TEXT NOT NULL,
+    entity         TEXT NOT NULL,
+    entity_id      TEXT,
+    ip_address     TEXT,
+    user_agent     TEXT,
+    metadata       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_audit_logs_action ON audit_logs (action);
+CREATE INDEX idx_audit_logs_created_at ON audit_logs (created_at DESC);
+CREATE INDEX idx_audit_logs_actor_id ON audit_logs (actor_id);
+
+-- ── updated_at Maintenance ───────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -170,4 +255,7 @@ CREATE TRIGGER trg_journal_updated_at BEFORE UPDATE ON journal_articles
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_career_listings_updated_at BEFORE UPDATE ON career_listings
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_custom_forms_updated_at BEFORE UPDATE ON custom_forms
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
