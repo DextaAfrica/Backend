@@ -129,7 +129,7 @@ func (repo *ProductionApprovalRepository) List(ctx context.Context, params domai
 	}
 	defer rows.Close()
 
-	items := make([]domain.ProductionReleaseRequest, 0, params.PerPage)
+	items := make([]domain.ProductionReleaseRequest, 0)
 	for rows.Next() {
 		var item domain.ProductionReleaseRequest
 		if err := scanProdRelease(rows, &item); err != nil {
