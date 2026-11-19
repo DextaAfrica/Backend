@@ -28,6 +28,9 @@ type Handlers struct {
 	Careers    *handlers.CareerHandler
 	Enquiries  *handlers.EnquiryHandler
 	Newsletter *handlers.NewsletterHandler
+	Forms      *handlers.FormHandler
+	Users      *handlers.UserHandler
+	Audit      *handlers.AuditHandler
 }
 
 func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler {
@@ -101,6 +104,11 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler 
 	r.Route("/careers/listings", func(r chi.Router) {
 		r.Get("/", h.Careers.ListPublic)
 		r.Get("/{slug}", h.Careers.GetPublic)
+		r.Post("/{slug}/inquiries", h.Careers.SubmitInquiry)
+	})
+
+	r.Route("/forms/{slug}", func(r chi.Router) {
+		r.Get("/", h.Forms.GetPublic)
 	})
 
 	// Public write surface: unauthenticated but rate-limited per IP since
@@ -110,6 +118,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler 
 		r.Post("/enquiries", h.Enquiries.Submit)
 		r.Post("/newsletter/subscribe", h.Newsletter.Subscribe)
 		r.Post("/newsletter/unsubscribe", h.Newsletter.Unsubscribe)
+		r.Post("/forms/{slug}/submit", h.Forms.Submit)
 	})
 
 	// Admin surface: every route here requires a valid admin session JWT.
@@ -144,6 +153,18 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler 
 			r.Get("/{id}", h.Careers.GetAdmin)
 			r.Put("/{id}", h.Careers.Update)
 			r.Delete("/{id}", h.Careers.Delete)
+			r.Get("/{id}/inquiries", h.Careers.ListInquiries)
+		})
+
+		r.Route("/users", func(r chi.Router) {
+			r.Post("/sync", h.Users.Sync)
+			r.Post("/", h.Users.Sync)
+			r.Get("/", h.Users.List)
+		})
+
+		r.Route("/audit-logs", func(r chi.Router) {
+			r.Post("/", h.Audit.Record)
+			r.Get("/", h.Audit.List)
 		})
 
 		r.Route("/enquiries", func(r chi.Router) {
@@ -154,6 +175,17 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler 
 
 		r.Route("/newsletter", func(r chi.Router) {
 			r.Get("/subscribers", h.Newsletter.ListAdmin)
+		})
+
+		r.Route("/forms", func(r chi.Router) {
+			r.Get("/", h.Forms.ListAdmin)
+			r.Post("/", h.Forms.Create)
+			r.Get("/{id}", h.Forms.GetAdmin)
+			r.Put("/{id}", h.Forms.Update)
+			r.Delete("/{id}", h.Forms.Delete)
+			r.Get("/{id}/submissions", h.Forms.ListSubmissions)
+			r.Get("/{id}/demographics", h.Forms.GetDemographics)
+			r.Get("/{id}/export/csv", h.Forms.ExportCSV)
 		})
 	})
 

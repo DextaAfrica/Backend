@@ -26,12 +26,16 @@ func (r *CareerListingRepository) Create(ctx context.Context, c *domain.CareerLi
 		return fmt.Errorf("career_repo: encode description: %w", err)
 	}
 
+	if c.Status == "" {
+		c.Status = "open"
+	}
+
 	const q = `
-		INSERT INTO career_listings (slug, title, department, location, employment_type, description, published)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		INSERT INTO career_listings (slug, title, department, location, employment_type, description, status, published, applicant_click_count)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		RETURNING id, created_at, updated_at`
 
-	err = r.pool.QueryRow(ctx, q, c.Slug, c.Title, c.Department, c.Location, c.EmploymentType, description, c.Published).
+	err = r.pool.QueryRow(ctx, q, c.Slug, c.Title, c.Department, c.Location, c.EmploymentType, description, c.Status, c.Published, c.ApplicantClickCount).
 		Scan(&c.ID, &c.CreatedAt, &c.UpdatedAt)
 	if isUniqueViolation(err) {
 		return domain.ErrConflict
@@ -48,14 +52,18 @@ func (r *CareerListingRepository) Update(ctx context.Context, c *domain.CareerLi
 		return fmt.Errorf("career_repo: encode description: %w", err)
 	}
 
+	if c.Status == "" {
+		c.Status = "open"
+	}
+
 	const q = `
 		UPDATE career_listings SET
 			slug = $1, title = $2, department = $3, location = $4,
-			employment_type = $5, description = $6, published = $7
-		WHERE id = $8
+			employment_type = $5, description = $6, status = $7, published = $8
+		WHERE id = $9
 		RETURNING updated_at`
 
-	err = r.pool.QueryRow(ctx, q, c.Slug, c.Title, c.Department, c.Location, c.EmploymentType, description, c.Published, c.ID).
+	err = r.pool.QueryRow(ctx, q, c.Slug, c.Title, c.Department, c.Location, c.EmploymentType, description, c.Status, c.Published, c.ID).
 		Scan(&c.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ErrNotFound
@@ -81,13 +89,13 @@ func (r *CareerListingRepository) Delete(ctx context.Context, id string) error {
 }
 
 const careerListingColumns = `
-	id, slug, title, department, location, employment_type, description, published, created_at, updated_at`
+	id, slug, title, department, location, employment_type, description, status, published, applicant_click_count, created_at, updated_at`
 
 func (r *CareerListingRepository) scanRow(row pgx.Row) (*domain.CareerListing, error) {
 	c := &domain.CareerListing{}
 	var description []byte
 	err := row.Scan(&c.ID, &c.Slug, &c.Title, &c.Department, &c.Location, &c.EmploymentType,
-		&description, &c.Published, &c.CreatedAt, &c.UpdatedAt)
+		&description, &c.Status, &c.Published, &c.ApplicantClickCount, &c.CreatedAt, &c.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -150,10 +158,47 @@ func (r *CareerListingRepository) List(ctx context.Context, params domain.ListPa
 }
 
 func (r *CareerListingRepository) SlugExists(ctx context.Context, slug string, excludeID string) (bool, error) {
-	var exists bool
-	const q = `SELECT EXISTS(SELECT 1 FROM career_listings WHERE slug = $1 AND id != $2)`
-	if err := r.pool.QueryRow(ctx, q, slug, nullableID(excludeID)).Scan(&exists); err != nil {
-		return false, fmt.Errorf("career_repo: slug exists: %w", err)
+	var count int
+	err := r.pool.QueryRow(ctx, `SELECT count(*) FROM career_listings WHERE slug = $1 AND id <> $2`, slug, excludeID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("career_repo: check slug: %w", err)
 	}
-	return exists, nil
+	return count > 0, nil
+}
+
+func (r *CareerListingRepository) IncrementClickCount(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE career_listings SET applicant_click_count = applicant_click_count + 1 WHERE id = $1`, id)
+	return err
+}
+
+func (r *CareerListingRepository) RecordInquiry(ctx context.Context, inq *domain.CareerInquiry) error {
+	const q = `
+		INSERT INTO career_inquiries (career_listing_id, applicant_name, applicant_email, applicant_phone, resume_url, cover_letter, source)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, created_at`
+	return r.pool.QueryRow(ctx, q, inq.CareerListingID, inq.ApplicantName, inq.ApplicantEmail, inq.ApplicantPhone, inq.ResumeURL, inq.CoverLetter, inq.Source).
+		Scan(&inq.ID, &inq.CreatedAt)
+}
+
+func (r *CareerListingRepository) ListInquiries(ctx context.Context, listingID string) ([]domain.CareerInquiry, error) {
+	const q = `
+		SELECT id, career_listing_id, applicant_name, applicant_email, applicant_phone, resume_url, cover_letter, source, created_at
+		FROM career_inquiries
+		WHERE career_listing_id = $1
+		ORDER BY created_at DESC`
+	rows, err := r.pool.Query(ctx, q, listingID)
+	if err != nil {
+		return nil, fmt.Errorf("career_repo: list inquiries: %w", err)
+	}
+	defer rows.Close()
+
+	var inquiries []domain.CareerInquiry
+	for rows.Next() {
+		var inq domain.CareerInquiry
+		if err := rows.Scan(&inq.ID, &inq.CareerListingID, &inq.ApplicantName, &inq.ApplicantEmail, &inq.ApplicantPhone, &inq.ResumeURL, &inq.CoverLetter, &inq.Source, &inq.CreatedAt); err != nil {
+			return nil, fmt.Errorf("career_repo: scan inquiry: %w", err)
+		}
+		inquiries = append(inquiries, inq)
+	}
+	return inquiries, nil
 }

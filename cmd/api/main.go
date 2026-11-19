@@ -74,6 +74,9 @@ func run() error {
 		Careers:    handlers.NewCareerHandler(services.Career),
 		Enquiries:  handlers.NewEnquiryHandler(services.Enquiry),
 		Newsletter: handlers.NewNewsletterHandler(services.Newsletter),
+		Forms:      handlers.NewFormHandler(services.Forms),
+		Users:      handlers.NewUserHandler(services.User),
+		Audit:      handlers.NewAuditHandler(services.Audit),
 	}
 
 	router := transporthttp.NewRouter(cfg, pool, h)
@@ -122,6 +125,8 @@ type repositories struct {
 	Careers     *postgres.CareerListingRepository
 	Enquiries   *postgres.EnquiryRepository
 	Subscribers *postgres.SubscriberRepository
+	Forms       *postgres.FormRepository
+	Audit       *postgres.AuditRepository
 }
 
 func buildRepositories(pool *pgxpool.Pool) repositories {
@@ -133,6 +138,8 @@ func buildRepositories(pool *pgxpool.Pool) repositories {
 		Careers:     postgres.NewCareerListingRepository(pool),
 		Enquiries:   postgres.NewEnquiryRepository(pool),
 		Subscribers: postgres.NewSubscriberRepository(pool),
+		Forms:       postgres.NewFormRepository(pool),
+		Audit:       postgres.NewAuditRepository(pool),
 	}
 }
 
@@ -146,6 +153,9 @@ type services struct {
 	Career     *service.CareerService
 	Enquiry    *service.EnquiryService
 	Newsletter *service.NewsletterService
+	Forms      *service.FormService
+	User       *service.UserService
+	Audit      *service.AuditService
 }
 
 func buildServices(cfg *config.Config, repos repositories) services {
@@ -160,5 +170,8 @@ func buildServices(cfg *config.Config, repos repositories) services {
 		Career:     service.NewCareerService(repos.Careers, revalidator),
 		Enquiry:    service.NewEnquiryService(repos.Enquiries),
 		Newsletter: service.NewNewsletterService(repos.Subscribers, forwarder),
+		Forms:      service.NewFormService(repos.Forms),
+		User:       service.NewUserService(repos.Admins),
+		Audit:      service.NewAuditService(repos.Audit),
 	}
 }

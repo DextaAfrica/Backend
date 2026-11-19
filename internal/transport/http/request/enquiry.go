@@ -10,5 +10,5 @@ type SubmitEnquiryRequest struct {
 }
 
 type UpdateEnquiryStatusRequest struct {
-	Status string `json:"status" validate:"required,oneof=new read archived"`
+	Status string `json:"status" validate:"required,oneof=new read in_progress resolved archived"`
 }
