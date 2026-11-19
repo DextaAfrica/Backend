@@ -8,9 +8,11 @@ import (
 type EnquiryStatus string
 
 const (
-	EnquiryStatusNew      EnquiryStatus = "new"
-	EnquiryStatusRead     EnquiryStatus = "read"
-	EnquiryStatusArchived EnquiryStatus = "archived"
+	EnquiryStatusNew        EnquiryStatus = "new"
+	EnquiryStatusRead       EnquiryStatus = "read"
+	EnquiryStatusInProgress EnquiryStatus = "in_progress"
+	EnquiryStatusResolved   EnquiryStatus = "resolved"
+	EnquiryStatusArchived   EnquiryStatus = "archived"
 )
 
 type Enquiry struct {

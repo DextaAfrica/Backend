@@ -106,3 +106,19 @@ func (s *CareerService) assertSlugAvailable(ctx context.Context, slug, excludeID
 	}
 	return nil
 }
+
+func (s *CareerService) RecordInquiry(ctx context.Context, inq *domain.CareerInquiry) error {
+	if err := s.repo.RecordInquiry(ctx, inq); err != nil {
+		return apperror.Internal(fmt.Errorf("career: record inquiry: %w", err))
+	}
+	_ = s.repo.IncrementClickCount(ctx, inq.CareerListingID)
+	return nil
+}
+
+func (s *CareerService) ListInquiries(ctx context.Context, listingID string) ([]domain.CareerInquiry, error) {
+	inquiries, err := s.repo.ListInquiries(ctx, listingID)
+	if err != nil {
+		return nil, apperror.Internal(fmt.Errorf("career: list inquiries: %w", err))
+	}
+	return inquiries, nil
+}

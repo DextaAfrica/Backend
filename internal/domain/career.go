@@ -24,16 +24,30 @@ func (t EmploymentType) Valid() bool {
 }
 
 type CareerListing struct {
-	ID             string
-	Slug           string
-	Title          string
-	Department     string
-	Location       string
-	EmploymentType EmploymentType
-	Description    map[string]any
-	Published      bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID                  string
+	Slug                string
+	Title               string
+	Department          string
+	Location            string
+	EmploymentType      EmploymentType
+	Description         map[string]any
+	Status              string
+	Published           bool
+	ApplicantClickCount int
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+type CareerInquiry struct {
+	ID              string
+	CareerListingID string
+	ApplicantName   string
+	ApplicantEmail  string
+	ApplicantPhone  string
+	ResumeURL       string
+	CoverLetter     string
+	Source          string
+	CreatedAt       time.Time
 }
 
 type CareerListingRepository interface {
@@ -44,4 +58,7 @@ type CareerListingRepository interface {
 	GetBySlug(ctx context.Context, slug string) (*CareerListing, error)
 	List(ctx context.Context, params ListParams) (PageResult[CareerListing], error)
 	SlugExists(ctx context.Context, slug string, excludeID string) (bool, error)
+	IncrementClickCount(ctx context.Context, id string) error
+	RecordInquiry(ctx context.Context, inq *CareerInquiry) error
+	ListInquiries(ctx context.Context, listingID string) ([]CareerInquiry, error)
 }
