@@ -238,14 +238,14 @@ func TestPresignDownloadPrivate(t *testing.T) {
 		}
 	})
 
-	t.Run("redirect parameter directs browser directly to signed download URL", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/admin/uploads/private?key=resumes/2026/11/candidate.pdf&redirect=true", nil)
+	t.Run("missing key validation failure", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/admin/uploads/private", nil)
 		rr := httptest.NewRecorder()
 
 		h.PresignDownloadPrivate(rr, req)
 
-		if rr.Code != http.StatusTemporaryRedirect {
-			t.Fatalf("expected status 307, got %d", rr.Code)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400 for missing key, got %d", rr.Code)
 		}
 	})
 }

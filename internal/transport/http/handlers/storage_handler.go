@@ -49,6 +49,10 @@ func (h *StorageHandler) PresignAdminUpload(w http.ResponseWriter, r *http.Reque
 // DirectAdminUpload receives a multipart file from the admin dashboard and streams it to R2.
 // POST /admin/uploads
 func (h *StorageHandler) DirectAdminUpload(w http.ResponseWriter, r *http.Request) {
+	// Hard-bound request body to prevent unbounded memory/disk spooling (gosec G111/G117)
+	const maxUploadBytes = 60 << 20 // 60MB max request size
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+
 	// 32MB max memory buffer before spooling to temp file
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		response.Error(w, r, apperror.New(apperror.CodeBadRequest, "failed to parse multipart form: "+err.Error()))
@@ -170,6 +174,10 @@ func (h *StorageHandler) PresignPublicResume(w http.ResponseWriter, r *http.Requ
 // DirectPublicResume allows job applicants to upload their resume directly via multipart form.
 // POST /uploads/resume
 func (h *StorageHandler) DirectPublicResume(w http.ResponseWriter, r *http.Request) {
+	// Hard-bound request body to prevent unbounded memory/disk spooling (gosec G111/G117)
+	const maxResumeBytes = 25 << 20 // 25MB max request size
+	r.Body = http.MaxBytesReader(w, r.Body, maxResumeBytes)
+
 	if err := r.ParseMultipartForm(15 << 20); err != nil {
 		response.Error(w, r, apperror.New(apperror.CodeBadRequest, "failed to parse multipart form: "+err.Error()))
 		return
@@ -231,12 +239,6 @@ func (h *StorageHandler) PresignDownloadPrivate(w http.ResponseWriter, r *http.R
 	url, err := h.storage.PresignDownload(r.Context(), key, 15*time.Minute)
 	if err != nil {
 		response.Error(w, r, err)
-		return
-	}
-
-	// If redirect requested by browser, redirect immediately to signed URL
-	if r.URL.Query().Get("redirect") == "true" {
-		http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 		return
 	}
 
