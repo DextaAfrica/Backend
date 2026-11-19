@@ -60,7 +60,9 @@ func (l *IPRateLimiter) getLimiter(ip string) *rate.Limiter {
 }
 
 func (l *IPRateLimiter) cleanupLoop() {
-	for range time.Tick(time.Minute) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
 		l.mu.Lock()
 		for ip, v := range l.visitors {
 			if time.Since(v.lastSeen) > 3*time.Minute {

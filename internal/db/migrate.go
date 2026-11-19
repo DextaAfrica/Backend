@@ -3,6 +3,7 @@ package db
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -14,6 +15,9 @@ import (
 // current. Controlled by DATABASE_AUTO_MIGRATE so a production deployment
 // can instead run migrations as an explicit release step if preferred.
 func Migrate(databaseURL, migrationsPath string) error {
+	if !strings.Contains(migrationsPath, "://") {
+		migrationsPath = "file://" + migrationsPath
+	}
 	m, err := migrate.New(migrationsPath, databaseURL)
 	if err != nil {
 		return fmt.Errorf("db: init migrator: %w", err)

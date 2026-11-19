@@ -119,6 +119,9 @@ func (r *AdminRepository) List(ctx context.Context, params domain.ListParams) (d
 		}
 		items = append(items, a)
 	}
+	if err := rows.Err(); err != nil {
+		return domain.PageResult[domain.Admin]{}, fmt.Errorf("admin_repo: rows: %w", err)
+	}
 	return domain.PageResult[domain.Admin]{
 		Items:      items,
 		TotalItems: total,
