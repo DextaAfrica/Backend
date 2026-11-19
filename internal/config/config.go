@@ -9,6 +9,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/caarlos0/env/v10"
@@ -25,6 +26,7 @@ type Config struct {
 	RateLimit  RateLimit
 	Frontend   Frontend
 	Newsletter Newsletter
+	Storage    Storage
 }
 
 type App struct {
@@ -80,6 +82,27 @@ type Newsletter struct {
 	WebhookTimeout time.Duration `env:"NEWSLETTER_WEBHOOK_TIMEOUT" envDefault:"5s"`
 }
 
+// Storage holds the configuration for Cloudflare R2 / S3-compatible object storage.
+type Storage struct {
+	Endpoint        string `env:"STORAGE_ENDPOINT" envDefault:"https://e9b3685f470b0935209bd7e768109d2a.r2.cloudflarestorage.com"`
+	Bucket          string `env:"STORAGE_BUCKET" envDefault:"dextaafricastorage"`
+	Region          string `env:"STORAGE_REGION" envDefault:"auto"`
+	AccessKeyID     string `env:"STORAGE_ACCESS_KEY_ID"`
+	SecretAccessKey string `env:"STORAGE_SECRET_ACCESS_KEY"`
+	PublicURL       string `env:"STORAGE_PUBLIC_URL"`
+}
+
+func (s Storage) IsConfigured() bool {
+	return s.Endpoint != "" && s.Bucket != "" && s.AccessKeyID != "" && s.SecretAccessKey != ""
+}
+
+func (s Storage) BasePublicURL() string {
+	if s.PublicURL != "" {
+		return strings.TrimRight(s.PublicURL, "/")
+	}
+	return fmt.Sprintf("%s/%s", strings.TrimRight(s.Endpoint, "/"), s.Bucket)
+}
+
 // Load reads a .env file when present (local development convenience only —
 // production deployments are expected to inject real environment variables)
 // then parses and validates the environment into a Config.
@@ -114,6 +137,9 @@ func (c *Config) validate() error {
 	}
 	if (c.Auth.AdminBootstrapEmail == "") != (c.Auth.AdminBootstrapPassword == "") {
 		return fmt.Errorf("ADMIN_BOOTSTRAP_EMAIL and ADMIN_BOOTSTRAP_PASSWORD must be set together")
+	}
+	if (c.Storage.AccessKeyID == "") != (c.Storage.SecretAccessKey == "") {
+		return fmt.Errorf("STORAGE_ACCESS_KEY_ID and STORAGE_SECRET_ACCESS_KEY must be set together")
 	}
 	return nil
 }

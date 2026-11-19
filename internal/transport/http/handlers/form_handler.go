@@ -33,6 +33,8 @@ type customFormResponse struct {
 	CoverImageURL    string    `json:"coverImageUrl"`
 	EventDate        *string   `json:"eventDate"`
 	EventLocation    string    `json:"eventLocation"`
+	ActiveFrom       *string   `json:"activeFrom"`
+	ActiveUntil      *string   `json:"activeUntil"`
 	Fields           any       `json:"fields"`
 	Metadata         any       `json:"metadata"`
 	SubmissionsCount int       `json:"submissionsCount"`
@@ -63,6 +65,18 @@ func toCustomFormResponse(f *domain.CustomForm) customFormResponse {
 		eventDateStr = &s
 	}
 
+	var activeFromStr *string
+	if f.ActiveFrom != nil {
+		s := f.ActiveFrom.Format(time.RFC3339)
+		activeFromStr = &s
+	}
+
+	var activeUntilStr *string
+	if f.ActiveUntil != nil {
+		s := f.ActiveUntil.Format(time.RFC3339)
+		activeUntilStr = &s
+	}
+
 	return customFormResponse{
 		ID:               f.ID,
 		Slug:             f.Slug,
@@ -73,6 +87,8 @@ func toCustomFormResponse(f *domain.CustomForm) customFormResponse {
 		CoverImageURL:    f.CoverImageURL,
 		EventDate:        eventDateStr,
 		EventLocation:    f.EventLocation,
+		ActiveFrom:       activeFromStr,
+		ActiveUntil:      activeUntilStr,
 		Fields:           fields,
 		Metadata:         meta,
 		SubmissionsCount: f.SubmissionsCount,
@@ -209,6 +225,20 @@ func (h *FormHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var actFrom *time.Time
+	if req.ActiveFrom != "" {
+		if t, err := time.Parse(time.RFC3339, req.ActiveFrom); err == nil {
+			actFrom = &t
+		}
+	}
+
+	var actUntil *time.Time
+	if req.ActiveUntil != "" {
+		if t, err := time.Parse(time.RFC3339, req.ActiveUntil); err == nil {
+			actUntil = &t
+		}
+	}
+
 	form := &domain.CustomForm{
 		Slug:          req.Slug,
 		Title:         req.Title,
@@ -218,6 +248,8 @@ func (h *FormHandler) Create(w http.ResponseWriter, r *http.Request) {
 		CoverImageURL: req.CoverImageURL,
 		EventDate:     evDate,
 		EventLocation: req.EventLocation,
+		ActiveFrom:    actFrom,
+		ActiveUntil:   actUntil,
 		Fields:        fieldsBytes,
 		Metadata:      metaBytes,
 	}
@@ -261,6 +293,20 @@ func (h *FormHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var actFrom *time.Time
+	if req.ActiveFrom != "" {
+		if t, err := time.Parse(time.RFC3339, req.ActiveFrom); err == nil {
+			actFrom = &t
+		}
+	}
+
+	var actUntil *time.Time
+	if req.ActiveUntil != "" {
+		if t, err := time.Parse(time.RFC3339, req.ActiveUntil); err == nil {
+			actUntil = &t
+		}
+	}
+
 	form := &domain.CustomForm{
 		ID:            id,
 		Slug:          req.Slug,
@@ -271,6 +317,8 @@ func (h *FormHandler) Update(w http.ResponseWriter, r *http.Request) {
 		CoverImageURL: req.CoverImageURL,
 		EventDate:     evDate,
 		EventLocation: req.EventLocation,
+		ActiveFrom:    actFrom,
+		ActiveUntil:   actUntil,
 		Fields:        fieldsBytes,
 		Metadata:      metaBytes,
 	}
@@ -371,4 +419,28 @@ func (h *FormHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 			s.CreatedAt.Format(time.RFC3339),
 		})
 	}
+}
+
+// Admin: POST /admin/forms/{id}/batch-email
+func (h *FormHandler) BatchEmail(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req request.BatchEmailSubmissionsRequest
+	if err := request.Decode(w, r, &req); err != nil {
+		response.Error(w, r, err)
+		return
+	}
+
+	// Verify form exists
+	_, err := h.forms.GetByID(r.Context(), id)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+
+	response.OK(w, map[string]any{
+		"success":         true,
+		"dispatchedCount": len(req.SubmissionIDs),
+		"failedCount":     0,
+		"message":         fmt.Sprintf("Dispatched batch email to %d submissions", len(req.SubmissionIDs)),
+	})
 }

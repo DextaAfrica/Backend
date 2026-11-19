@@ -32,6 +32,8 @@ type CustomForm struct {
 	CoverImageURL    string
 	EventDate        *time.Time
 	EventLocation    string
+	ActiveFrom       *time.Time
+	ActiveUntil      *time.Time
 	Fields           []byte
 	Metadata         []byte
 	SubmissionsCount int

@@ -21,7 +21,7 @@ func NewFormRepository(pool *pgxpool.Pool) *FormRepository {
 
 const formColumns = `
 	f.id, f.slug, f.title, f.description, f.form_type, f.status,
-	f.cover_image_url, f.event_date, f.event_location, f.fields, f.metadata,
+	f.cover_image_url, f.event_date, f.event_location, f.active_from, f.active_until, f.fields, f.metadata,
 	COALESCE((SELECT COUNT(*) FROM form_submissions fs WHERE fs.form_id = f.id), 0) AS submissions_count,
 	f.created_at, f.updated_at`
 
@@ -29,7 +29,7 @@ func (r *FormRepository) scanForm(row pgx.Row) (*domain.CustomForm, error) {
 	f := &domain.CustomForm{}
 	err := row.Scan(
 		&f.ID, &f.Slug, &f.Title, &f.Description, &f.FormType, &f.Status,
-		&f.CoverImageURL, &f.EventDate, &f.EventLocation, &f.Fields, &f.Metadata,
+		&f.CoverImageURL, &f.EventDate, &f.EventLocation, &f.ActiveFrom, &f.ActiveUntil, &f.Fields, &f.Metadata,
 		&f.SubmissionsCount, &f.CreatedAt, &f.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -54,13 +54,13 @@ func (r *FormRepository) Create(ctx context.Context, f *domain.CustomForm) error
 	const q = `
 		INSERT INTO custom_forms (
 			slug, title, description, form_type, status, cover_image_url,
-			event_date, event_location, fields, metadata
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+			event_date, event_location, active_from, active_until, fields, metadata
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		RETURNING id, created_at, updated_at`
 
 	err := r.pool.QueryRow(ctx, q,
 		f.Slug, f.Title, f.Description, f.FormType, f.Status, f.CoverImageURL,
-		f.EventDate, f.EventLocation, fieldsJSON, metaJSON,
+		f.EventDate, f.EventLocation, f.ActiveFrom, f.ActiveUntil, fieldsJSON, metaJSON,
 	).Scan(&f.ID, &f.CreatedAt, &f.UpdatedAt)
 
 	if isUniqueViolation(err) {
@@ -86,13 +86,14 @@ func (r *FormRepository) Update(ctx context.Context, f *domain.CustomForm) error
 		UPDATE custom_forms SET
 			slug = $1, title = $2, description = $3, form_type = $4,
 			status = $5, cover_image_url = $6, event_date = $7,
-			event_location = $8, fields = $9, metadata = $10
-		WHERE id = $11
+			event_location = $8, active_from = $9, active_until = $10,
+			fields = $11, metadata = $12
+		WHERE id = $13
 		RETURNING updated_at`
 
 	err := r.pool.QueryRow(ctx, q,
 		f.Slug, f.Title, f.Description, f.FormType, f.Status, f.CoverImageURL,
-		f.EventDate, f.EventLocation, fieldsJSON, metaJSON, f.ID,
+		f.EventDate, f.EventLocation, f.ActiveFrom, f.ActiveUntil, fieldsJSON, metaJSON, f.ID,
 	).Scan(&f.UpdatedAt)
 
 	if errors.Is(err, pgx.ErrNoRows) {

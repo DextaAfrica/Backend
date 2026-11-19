@@ -22,6 +22,7 @@ import (
 	"github.com/DextaAfrica/Backend/internal/logging"
 	"github.com/DextaAfrica/Backend/internal/repository/postgres"
 	"github.com/DextaAfrica/Backend/internal/service"
+	"github.com/DextaAfrica/Backend/internal/storage"
 	transporthttp "github.com/DextaAfrica/Backend/internal/transport/http"
 	"github.com/DextaAfrica/Backend/internal/transport/http/handlers"
 )
@@ -77,6 +78,7 @@ func run() error {
 		Forms:      handlers.NewFormHandler(services.Forms),
 		Users:      handlers.NewUserHandler(services.User),
 		Audit:      handlers.NewAuditHandler(services.Audit),
+		Storage:    handlers.NewStorageHandler(services.Storage),
 	}
 
 	router := transporthttp.NewRouter(cfg, pool, h)
@@ -156,11 +158,13 @@ type services struct {
 	Forms      *service.FormService
 	User       *service.UserService
 	Audit      *service.AuditService
+	Storage    storage.Service
 }
 
 func buildServices(cfg *config.Config, repos repositories) services {
 	revalidator := service.NewRevalidator(cfg.Frontend)
 	forwarder := service.NewNewsletterForwarder(cfg.Newsletter)
+	storageService := storage.NewS3Service(cfg.Storage)
 
 	return services{
 		Auth:       service.NewAuthService(repos.Admins, cfg.Auth.JWTSecret, cfg.Auth.AccessTokenTTL),
@@ -173,5 +177,6 @@ func buildServices(cfg *config.Config, repos repositories) services {
 		Forms:      service.NewFormService(repos.Forms),
 		User:       service.NewUserService(repos.Admins),
 		Audit:      service.NewAuditService(repos.Audit),
+		Storage:    storageService,
 	}
 }

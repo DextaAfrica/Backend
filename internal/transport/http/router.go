@@ -31,6 +31,7 @@ type Handlers struct {
 	Forms      *handlers.FormHandler
 	Users      *handlers.UserHandler
 	Audit      *handlers.AuditHandler
+	Storage    *handlers.StorageHandler
 }
 
 func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler {
@@ -119,6 +120,8 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler 
 		r.Post("/newsletter/subscribe", h.Newsletter.Subscribe)
 		r.Post("/newsletter/unsubscribe", h.Newsletter.Unsubscribe)
 		r.Post("/forms/{slug}/submit", h.Forms.Submit)
+		r.Post("/uploads/resume/presign", h.Storage.PresignPublicResume)
+		r.Post("/uploads/resume", h.Storage.DirectPublicResume)
 	})
 
 	// Admin surface: every route here requires a valid admin session JWT.
@@ -186,6 +189,14 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler 
 			r.Get("/{id}/submissions", h.Forms.ListSubmissions)
 			r.Get("/{id}/demographics", h.Forms.GetDemographics)
 			r.Get("/{id}/export/csv", h.Forms.ExportCSV)
+			r.Post("/{id}/batch-email", h.Forms.BatchEmail)
+		})
+
+		r.Route("/uploads", func(r chi.Router) {
+			r.Post("/presign", h.Storage.PresignAdminUpload)
+			r.Post("/", h.Storage.DirectAdminUpload)
+			r.Delete("/", h.Storage.DeleteAdminUpload)
+			r.Get("/private", h.Storage.PresignDownloadPrivate)
 		})
 	})
 
