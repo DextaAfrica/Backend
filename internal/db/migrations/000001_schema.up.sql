@@ -235,6 +235,34 @@ CREATE INDEX idx_audit_logs_action ON audit_logs (action);
 CREATE INDEX idx_audit_logs_created_at ON audit_logs (created_at DESC);
 CREATE INDEX idx_audit_logs_actor_id ON audit_logs (actor_id);
 
+-- ── Production Release Requests (2-Stage Approval Architecture) ───────────
+CREATE TABLE production_release_requests (
+    id                TEXT PRIMARY KEY,
+    ticket_number     VARCHAR(64) NOT NULL UNIQUE,
+    title             VARCHAR(255) NOT NULL,
+    target_system     VARCHAR(128) NOT NULL,
+    stage             INT NOT NULL DEFAULT 1,
+    status            VARCHAR(64) NOT NULL DEFAULT 'PENDING_SUPER_ADMIN',
+    admin_id          TEXT NOT NULL,
+    admin_name        VARCHAR(255) NOT NULL,
+    admin_email       VARCHAR(255) NOT NULL,
+    risk_level        VARCHAR(32) NOT NULL DEFAULT 'MEDIUM',
+    justification     TEXT NOT NULL,
+    rollback_plan     TEXT NOT NULL,
+    diff_summary      TEXT,
+    super_admin_id    TEXT,
+    super_admin_name  VARCHAR(255),
+    super_admin_email VARCHAR(255),
+    super_admin_notes TEXT,
+    approved_at       TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_prod_release_status ON production_release_requests (status);
+CREATE INDEX idx_prod_release_created_at ON production_release_requests (created_at DESC);
+CREATE INDEX idx_prod_release_admin_id ON production_release_requests (admin_id);
+
 -- ── updated_at Maintenance ───────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
@@ -260,4 +288,7 @@ CREATE TRIGGER trg_career_listings_updated_at BEFORE UPDATE ON career_listings
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_custom_forms_updated_at BEFORE UPDATE ON custom_forms
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_production_release_requests_updated_at BEFORE UPDATE ON production_release_requests
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
