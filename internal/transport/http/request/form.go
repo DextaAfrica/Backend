@@ -9,8 +9,16 @@ type SaveCustomFormRequest struct {
 	CoverImageURL string `json:"coverImageUrl" validate:"max=500"`
 	EventDate     string `json:"eventDate"`
 	EventLocation string `json:"eventLocation" validate:"max=300"`
+	ActiveFrom    string `json:"activeFrom"`
+	ActiveUntil   string `json:"activeUntil"`
 	Fields        any    `json:"fields"`
 	Metadata      any    `json:"metadata"`
+}
+
+type BatchEmailSubmissionsRequest struct {
+	SubmissionIDs []string `json:"submissionIds" validate:"required,min=1"`
+	Subject       string   `json:"subject" validate:"required,max=200"`
+	Message       string   `json:"message" validate:"required,max=10000"`
 }
 
 type SubmitFormRequest struct {

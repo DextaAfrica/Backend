@@ -166,6 +166,8 @@ CREATE TABLE custom_forms (
     cover_image_url  TEXT NOT NULL DEFAULT '',
     event_date       TIMESTAMPTZ,
     event_location   TEXT NOT NULL DEFAULT '',
+    active_from      TIMESTAMPTZ,
+    active_until     TIMESTAMPTZ,
     fields           JSONB NOT NULL DEFAULT '[]'::jsonb,
     metadata         JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
