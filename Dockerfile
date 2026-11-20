@@ -3,7 +3,7 @@
 # automated migrations, and enterprise cloud ingress.
 
 # --- Build stage ---
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 
 RUN apk add --no-cache ca-certificates git
