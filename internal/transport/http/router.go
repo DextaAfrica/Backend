@@ -33,6 +33,7 @@ type Handlers struct {
 	Audit              *handlers.AuditHandler
 	Storage            *handlers.StorageHandler
 	ProductionApproval *handlers.ProductionApprovalHandler
+	DashboardAccess    *handlers.DashboardAccessHandler
 }
 
 func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler {
@@ -205,6 +206,13 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers) http.Handler 
 			r.Post("/", h.ProductionApproval.Create)
 			r.Get("/{id}", h.ProductionApproval.Get)
 			r.Patch("/{id}/decision", h.ProductionApproval.Decide)
+		})
+
+		r.Route("/access-requests", func(r chi.Router) {
+			r.Get("/", h.DashboardAccess.List)
+			r.Post("/", h.DashboardAccess.Create)
+			r.Get("/{id}", h.DashboardAccess.Get)
+			r.Patch("/{id}/review", h.DashboardAccess.Review)
 		})
 	})
 

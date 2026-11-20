@@ -10,17 +10,19 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- Comprehensive administrator and employee identity store with role-based
 -- routing, departmental tagging, and operational telemetry.
 CREATE TABLE admins (
-    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email          TEXT NOT NULL UNIQUE,
-    password_hash  TEXT NOT NULL,
-    full_name      TEXT NOT NULL DEFAULT '',
-    role           TEXT NOT NULL DEFAULT 'ADMIN',
-    department     TEXT NOT NULL DEFAULT 'OPERATIONS',
-    job_title      TEXT NOT NULL DEFAULT '',
-    phone          TEXT NOT NULL DEFAULT '',
-    status         TEXT NOT NULL DEFAULT 'ACTIVE',
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email             TEXT NOT NULL UNIQUE,
+    password_hash     TEXT NOT NULL,
+    full_name         TEXT NOT NULL DEFAULT '',
+    role              TEXT NOT NULL DEFAULT 'ADMIN',
+    department        TEXT NOT NULL DEFAULT 'OPERATIONS',
+    job_title         TEXT NOT NULL DEFAULT '',
+    phone             TEXT NOT NULL DEFAULT '',
+    status            TEXT NOT NULL DEFAULT 'ACTIVE',
+    assigned_modules  TEXT NOT NULL DEFAULT '["operations","approvals","personal"]',
+    signature_url     TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_admins_role ON admins (role);
@@ -263,6 +265,34 @@ CREATE INDEX idx_prod_release_status ON production_release_requests (status);
 CREATE INDEX idx_prod_release_created_at ON production_release_requests (created_at DESC);
 CREATE INDEX idx_prod_release_admin_id ON production_release_requests (admin_id);
 
+-- ── Dashboard Access Requests ─────────────────────────────────────────────
+-- IT governance and role-based access requests with verified digital signatures.
+CREATE TABLE dashboard_access_requests (
+    id                TEXT PRIMARY KEY,
+    ticket_number     VARCHAR(64) NOT NULL UNIQUE,
+    user_id           TEXT NOT NULL,
+    requester_name    VARCHAR(255) NOT NULL,
+    requester_email   VARCHAR(255) NOT NULL,
+    department        VARCHAR(128) NOT NULL,
+    job_title         VARCHAR(128) NOT NULL,
+    requested_modules TEXT NOT NULL,
+    justification     TEXT NOT NULL,
+    signature_data    TEXT NOT NULL,
+    signature_type    VARCHAR(32) NOT NULL DEFAULT 'DRAWN',
+    signed_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    status            VARCHAR(64) NOT NULL DEFAULT 'PENDING_IT_APPROVAL',
+    reviewed_by_id    TEXT,
+    approved_at       TIMESTAMPTZ,
+    approved_modules  TEXT,
+    it_notes          TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_dash_req_status ON dashboard_access_requests (status);
+CREATE INDEX idx_dash_req_user_id ON dashboard_access_requests (user_id);
+CREATE INDEX idx_dash_req_created_at ON dashboard_access_requests (created_at DESC);
+
 -- ── updated_at Maintenance ───────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
@@ -291,4 +321,7 @@ CREATE TRIGGER trg_custom_forms_updated_at BEFORE UPDATE ON custom_forms
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_production_release_requests_updated_at BEFORE UPDATE ON production_release_requests
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_dashboard_access_requests_updated_at BEFORE UPDATE ON dashboard_access_requests
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();

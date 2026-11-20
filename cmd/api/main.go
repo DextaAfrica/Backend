@@ -80,6 +80,7 @@ func run() error {
 		Audit:              handlers.NewAuditHandler(services.Audit),
 		Storage:            handlers.NewStorageHandler(services.Storage),
 		ProductionApproval: handlers.NewProductionApprovalHandler(services.ProductionApproval),
+		DashboardAccess:    handlers.NewDashboardAccessHandler(services.DashboardAccess),
 	}
 
 	router := transporthttp.NewRouter(cfg, pool, h)
@@ -131,6 +132,7 @@ type repositories struct {
 	Forms       *postgres.FormRepository
 	Audit               *postgres.AuditRepository
 	ProductionApprovals *postgres.ProductionApprovalRepository
+	DashboardAccess     *postgres.DashboardAccessRepository
 }
 
 func buildRepositories(pool *pgxpool.Pool) repositories {
@@ -145,6 +147,7 @@ func buildRepositories(pool *pgxpool.Pool) repositories {
 		Forms:               postgres.NewFormRepository(pool),
 		Audit:               postgres.NewAuditRepository(pool),
 		ProductionApprovals: postgres.NewProductionApprovalRepository(pool),
+		DashboardAccess:     postgres.NewDashboardAccessRepository(pool),
 	}
 }
 
@@ -163,6 +166,7 @@ type services struct {
 	Audit              *service.AuditService
 	Storage            storage.Service
 	ProductionApproval *service.ProductionApprovalService
+	DashboardAccess    *service.DashboardAccessService
 }
 
 func buildServices(cfg *config.Config, repos repositories) services {
@@ -183,5 +187,6 @@ func buildServices(cfg *config.Config, repos repositories) services {
 		Audit:              service.NewAuditService(repos.Audit),
 		Storage:            storageService,
 		ProductionApproval: service.NewProductionApprovalService(repos.ProductionApprovals),
+		DashboardAccess:    service.NewDashboardAccessService(repos.DashboardAccess, repos.Audit, repos.Admins),
 	}
 }
