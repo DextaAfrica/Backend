@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     tags: ["v*.*.*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -33,7 +34,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: |
+            ghcr.io/dextaafrica/backend
+            ghcr.io/${{ github.repository }}
           tags: |
             type=sha,format=long
             type=ref,event=branch
@@ -46,6 +49,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

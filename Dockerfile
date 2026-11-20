@@ -1,7 +1,6 @@
-# Production image: multi-stage build producing a minimal, non-root,
-# distroless runtime. No shell, no package manager, no build tooling in the
-# final image — smallest possible attack surface for what actually runs in
-# production. For local development with hot reload, use Dockerfile.dev.
+# Production image: multi-stage build producing a hardened, minimal,
+# non-root Alpine runtime. Fully compatible with container health checks (wget),
+# automated migrations, and enterprise cloud ingress.
 
 # --- Build stage ---
 FROM golang:1.26-alpine AS build
@@ -16,13 +15,17 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
 # --- Runtime stage ---
-FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+FROM alpine:3.20 AS runtime
+RUN apk add --no-cache ca-certificates tzdata wget && \
+    addgroup -S -g 10001 appgroup && \
+    adduser -S -u 10001 -G appgroup -h /app -s /sbin/nologin appuser
+
 WORKDIR /app
 
-COPY --from=build /out/api ./api
-COPY --from=build /src/internal/db/migrations ./internal/db/migrations
+COPY --from=build --chown=appuser:appgroup /out/api ./api
+COPY --from=build --chown=appuser:appgroup /src/internal/db/migrations ./internal/db/migrations
 
-USER nonroot:nonroot
+USER appuser:appgroup
 EXPOSE 8080
 
 ENTRYPOINT ["/app/api"]

@@ -46,6 +46,24 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Dedicated migration execution mode for DevOps container orchestration
+	// (e.g. `make migrate` or ephemeral migration jobs in docker-compose-prod.yml).
+	isMigrateOnly := os.Getenv("MIGRATE_ONLY") == "true"
+	for _, arg := range os.Args[1:] {
+		if arg == "migrate" || arg == "-migrate-only" || arg == "--migrate-only" {
+			isMigrateOnly = true
+			break
+		}
+	}
+	if isMigrateOnly {
+		slog.Info("running database migrations in standalone mode", "migrations_path", cfg.Database.MigrationsPath)
+		if err := db.Migrate(cfg.Database.URL, cfg.Database.MigrationsPath); err != nil {
+			return fmt.Errorf("standalone migrations failed: %w", err)
+		}
+		slog.Info("database migrations applied successfully")
+		return nil
+	}
+
 	if cfg.Database.AutoMigrate {
 		if err := db.Migrate(cfg.Database.URL, cfg.Database.MigrationsPath); err != nil {
 			return fmt.Errorf("run migrations: %w", err)
