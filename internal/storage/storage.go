@@ -24,6 +24,8 @@ const (
 	FolderForms     = "forms"
 	FolderResumes   = "resumes"
 	FolderMedia     = "media"
+	FolderCampaigns = "campaigns"
+	FolderAvatars   = "avatars"
 )
 
 // Max size constraints per asset category (in bytes).
@@ -117,13 +119,15 @@ func ValidateUploadRequest(folder, filename, contentType string, size int64, res
 		FolderForms:     true,
 		FolderResumes:   true,
 		FolderMedia:     true,
+		FolderCampaigns: true,
+		FolderAvatars:   true,
 	}
 
 	if resumeOnly {
 		folder = FolderResumes
 	} else if !validFolders[folder] {
 		return "", apperror.Validation("invalid upload parameters", map[string]string{
-			"folder": fmt.Sprintf("invalid folder '%s'; must be one of: portfolio, journal, pages, forms, resumes, media", folder),
+			"folder": fmt.Sprintf("invalid folder '%s'; must be one of: portfolio, journal, pages, forms, resumes, media, campaigns, avatars", folder),
 		})
 	}
 
