@@ -15,7 +15,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
 # --- Runtime stage ---
-FROM alpine:3.20 AS runtime
+FROM alpine:3.24 AS runtime
 RUN apk add --no-cache ca-certificates tzdata wget && \
     addgroup -S -g 10001 appgroup && \
     adduser -S -u 10001 -G appgroup -h /app -s /sbin/nologin appuser
