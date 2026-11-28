@@ -86,6 +86,11 @@ func run() error {
 	go outboxWorker.Start(ctx)
 	defer outboxWorker.Stop()
 
+	// Launch automated visitor report cron worker
+	visitorReportWorker := application.NewVisitorReportWorker(services.VisitorReports)
+	go visitorReportWorker.Start(ctx)
+	defer visitorReportWorker.Stop()
+
 	if err := services.Auth.BootstrapAdmin(ctx, cfg.Auth.AdminBootstrapEmail, cfg.Auth.AdminBootstrapPassword); err != nil {
 		return fmt.Errorf("bootstrap admin: %w", err)
 	}
@@ -100,7 +105,7 @@ func run() error {
 		Enquiries:          handlers.NewEnquiryHandler(services.Enquiry),
 		Newsletter:         handlers.NewNewsletterHandler(services.Newsletter),
 		Forms:              handlers.NewFormHandler(services.Forms),
-		Visitors:           handlers.NewVisitorHandler(services.Visitors),
+		Visitors:           handlers.NewVisitorHandler(services.Visitors, services.VisitorReports),
 		Users:              handlers.NewUserHandler(services.User),
 		Audit:              handlers.NewAuditHandler(services.Audit),
 		Storage:            handlers.NewStorageHandler(services.Storage),
@@ -158,6 +163,7 @@ type repositories struct {
 	Subscribers         *postgres.SubscriberRepository
 	Forms               *postgres.FormRepository
 	Visitors            *postgres.VisitorRepository
+	VisitorReports      *postgres.VisitorReportRepository
 	Audit               *postgres.AuditRepository
 	ProductionApprovals *postgres.ProductionApprovalRepository
 	DashboardAccess     *postgres.DashboardAccessRepository
@@ -176,6 +182,7 @@ func buildRepositories(pool *pgxpool.Pool, jwtSecret string) repositories {
 		Subscribers:         postgres.NewSubscriberRepository(pool),
 		Forms:               postgres.NewFormRepository(pool),
 		Visitors:            postgres.NewVisitorRepository(pool),
+		VisitorReports:      postgres.NewVisitorReportRepository(pool),
 		Audit:               postgres.NewAuditRepository(pool, jwtSecret),
 		ProductionApprovals: postgres.NewProductionApprovalRepository(pool),
 		DashboardAccess:     postgres.NewDashboardAccessRepository(pool),
@@ -194,6 +201,7 @@ type services struct {
 	Newsletter *service.NewsletterService
 	Forms      *service.FormService
 	Visitors   *service.VisitorService
+	VisitorReports *service.VisitorReportService
 	User       *service.UserService
 	Audit              *service.AuditService
 	Storage            storage.Service
@@ -216,6 +224,7 @@ func buildServices(cfg *config.Config, repos repositories) services {
 		Newsletter:         service.NewNewsletterService(repos.Subscribers, forwarder),
 		Forms:              service.NewFormService(repos.Forms),
 		Visitors:           service.NewVisitorService(repos.Visitors),
+		VisitorReports:     service.NewVisitorReportService(repos.VisitorReports, repos.Visitors, cfg.SMTP),
 		User:               service.NewUserService(repos.Admins),
 		Audit:              service.NewAuditService(repos.Audit),
 		Storage:            storageService,

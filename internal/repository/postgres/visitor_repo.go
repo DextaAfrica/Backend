@@ -148,6 +148,16 @@ func (r *VisitorRepository) List(ctx context.Context, filter domain.VisitorFilte
 		args = append(args, filter.Date)
 		argIdx++
 	}
+	if filter.StartDate != nil {
+		conditions = append(conditions, fmt.Sprintf("check_in_at >= $%d", argIdx))
+		args = append(args, *filter.StartDate)
+		argIdx++
+	}
+	if filter.EndDate != nil {
+		conditions = append(conditions, fmt.Sprintf("check_in_at <= $%d", argIdx))
+		args = append(args, *filter.EndDate)
+		argIdx++
+	}
 	if q := strings.TrimSpace(filter.Query); q != "" {
 		like := "%" + q + "%"
 		conditions = append(conditions, fmt.Sprintf("(full_name ILIKE $%d OR email ILIKE $%d OR phone ILIKE $%d OR company ILIKE $%d OR host_name ILIKE $%d OR pass_code ILIKE $%d)", argIdx, argIdx, argIdx, argIdx, argIdx, argIdx))

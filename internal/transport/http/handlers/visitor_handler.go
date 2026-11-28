@@ -17,10 +17,11 @@ import (
 
 type VisitorHandler struct {
 	visitors *service.VisitorService
+	reports  *service.VisitorReportService
 }
 
-func NewVisitorHandler(visitors *service.VisitorService) *VisitorHandler {
-	return &VisitorHandler{visitors: visitors}
+func NewVisitorHandler(visitors *service.VisitorService, reports *service.VisitorReportService) *VisitorHandler {
+	return &VisitorHandler{visitors: visitors, reports: reports}
 }
 
 type visitorCheckInRequest struct {
@@ -294,3 +295,75 @@ func (h *VisitorHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	cw.Flush()
 }
+
+type updateReportScheduleRequest struct {
+	Title           string               `json:"title"`
+	Cadence         domain.ReportCadence `json:"cadence"`
+	RecipientEmails []string             `json:"recipientEmails"`
+	Department      string               `json:"department"`
+	IncludeAllDepts bool                 `json:"includeAllDepts"`
+	IsActive        bool                 `json:"isActive"`
+}
+
+// Admin: GET /admin/visitors/report-schedule
+func (h *VisitorHandler) GetReportSchedule(w http.ResponseWriter, r *http.Request) {
+	schedule, err := h.reports.GetSchedule(r.Context())
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.OK(w, schedule)
+}
+
+// Admin: PUT /admin/visitors/report-schedule
+func (h *VisitorHandler) UpdateReportSchedule(w http.ResponseWriter, r *http.Request) {
+	var req updateReportScheduleRequest
+	if err := request.Decode(w, r, &req); err != nil {
+		response.Error(w, r, err)
+		return
+	}
+
+	updated, err := h.reports.UpdateSchedule(
+		r.Context(),
+		req.Title,
+		req.Cadence,
+		req.RecipientEmails,
+		req.Department,
+		req.IncludeAllDepts,
+		req.IsActive,
+	)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.OK(w, updated)
+}
+
+// Admin: POST /admin/visitors/report-schedule/trigger
+func (h *VisitorHandler) TriggerReport(w http.ResponseWriter, r *http.Request) {
+	adminEmail := r.Header.Get("X-Admin-Email")
+	delivery, err := h.reports.TriggerReport(r.Context(), adminEmail)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.OK(w, delivery)
+}
+
+// Admin: GET /admin/visitors/report-deliveries
+func (h *VisitorHandler) ListReportDeliveries(w http.ResponseWriter, r *http.Request) {
+	page := queryInt(r, "page", 1)
+	perPage := queryInt(r, "perPage", 20)
+	deliveries, err := h.reports.ListDeliveries(r.Context(), page, perPage)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.Paginated(w, deliveries.Items, response.Meta{
+		Page:       deliveries.Page,
+		PerPage:    deliveries.PerPage,
+		TotalItems: deliveries.TotalItems,
+		TotalPages: deliveries.TotalPages(),
+	})
+}
+

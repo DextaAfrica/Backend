@@ -1,5 +1,6 @@
 -- Reverses 000001_schema.up.sql in full, in reverse dependency order.
 
+DROP TRIGGER IF EXISTS trg_visitor_report_schedules_updated_at ON visitor_report_schedules;
 DROP TRIGGER IF EXISTS trg_visitors_updated_at ON visitors;
 DROP TRIGGER IF EXISTS trg_dashboard_access_requests_updated_at ON dashboard_access_requests;
 DROP TRIGGER IF EXISTS trg_production_release_requests_updated_at ON production_release_requests;
@@ -12,6 +13,8 @@ DROP TRIGGER IF EXISTS trg_admin_sessions_updated_at ON admin_sessions;
 DROP TRIGGER IF EXISTS trg_admins_updated_at ON admins;
 DROP FUNCTION IF EXISTS set_updated_at();
 
+DROP TABLE IF EXISTS visitor_report_deliveries;
+DROP TABLE IF EXISTS visitor_report_schedules;
 DROP TABLE IF EXISTS visitors;
 DROP TABLE IF EXISTS idempotency_keys;
 DROP TABLE IF EXISTS admin_sessions;

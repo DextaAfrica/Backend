@@ -46,6 +46,8 @@ type VisitorFilter struct {
 	Department string
 	Purpose    string
 	Date       string // YYYY-MM-DD
+	StartDate  *time.Time
+	EndDate    *time.Time
 	Query      string
 	Page       int
 	PerPage    int

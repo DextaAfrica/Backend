@@ -370,6 +370,39 @@ CREATE INDEX idx_visitors_email ON visitors (email);
 CREATE INDEX idx_visitors_phone ON visitors (phone);
 CREATE INDEX idx_visitors_check_in_at ON visitors (check_in_at DESC);
 
+-- ── Automated Visitor Report Scheduling & Delivery Ledger ─────────────────
+CREATE TABLE visitor_report_schedules (
+    id                VARCHAR(64) PRIMARY KEY,
+    title             VARCHAR(255) NOT NULL DEFAULT 'Visitor Check-in Digest',
+    cadence           VARCHAR(32) NOT NULL DEFAULT 'WEEKLY', -- 'WEEKLY', 'MONTHLY'
+    recipient_emails  TEXT[] NOT NULL,
+    department        VARCHAR(128) NOT NULL DEFAULT 'ALL',
+    include_all_depts BOOLEAN NOT NULL DEFAULT TRUE,
+    is_active         BOOLEAN NOT NULL DEFAULT TRUE,
+    last_run_at       TIMESTAMPTZ,
+    next_run_at       TIMESTAMPTZ NOT NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_visitor_report_schedules_next_run ON visitor_report_schedules (is_active, next_run_at);
+
+CREATE TABLE visitor_report_deliveries (
+    id               VARCHAR(64) PRIMARY KEY,
+    schedule_id      VARCHAR(64) NOT NULL,
+    title            VARCHAR(255) NOT NULL,
+    cadence          VARCHAR(32) NOT NULL,
+    recipient_emails TEXT[] NOT NULL,
+    period_start     TIMESTAMPTZ NOT NULL,
+    period_end       TIMESTAMPTZ NOT NULL,
+    total_visitors   INT NOT NULL DEFAULT 0,
+    status           VARCHAR(32) NOT NULL, -- 'SENT', 'FAILED'
+    error_message    TEXT,
+    sent_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_visitor_report_deliveries_sent_at ON visitor_report_deliveries (sent_at DESC);
+
 -- ── updated_at Maintenance ───────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
@@ -407,4 +440,7 @@ CREATE TRIGGER trg_dashboard_access_requests_updated_at BEFORE UPDATE ON dashboa
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_visitors_updated_at BEFORE UPDATE ON visitors
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_visitor_report_schedules_updated_at BEFORE UPDATE ON visitor_report_schedules
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();

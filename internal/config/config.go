@@ -26,6 +26,7 @@ type Config struct {
 	Frontend   Frontend
 	Newsletter Newsletter
 	Storage    Storage
+	SMTP       SMTP
 }
 
 type App struct {
@@ -89,6 +90,18 @@ type Storage struct {
 	AccessKeyID     string `env:"STORAGE_ACCESS_KEY_ID"`
 	SecretAccessKey string `env:"STORAGE_SECRET_ACCESS_KEY"`
 	PublicURL       string `env:"STORAGE_PUBLIC_URL"`
+}
+
+type SMTP struct {
+	Host     string `env:"SMTP_HOST" envDefault:"127.0.0.1"`
+	Port     int    `env:"SMTP_PORT" envDefault:"1025"`
+	User     string `env:"SMTP_USER"`
+	Password string `env:"SMTP_PASS"`
+	From     string `env:"EMAIL_FROM" envDefault:"Dexta Africa Reception <operations@dextaafrica.com>"`
+}
+
+func (s SMTP) IsConfigured() bool {
+	return s.Host != "" && s.Port > 0
 }
 
 func (s Storage) IsConfigured() bool {

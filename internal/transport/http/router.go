@@ -224,6 +224,10 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, h Handlers, idempotencyRe
 			r.Get("/analytics", h.Visitors.GetAnalytics)
 			r.Get("/export/csv", h.Visitors.ExportCSV)
 			r.Patch("/{id}/check-out", h.Visitors.AdminCheckOut)
+			r.Get("/report-schedule", h.Visitors.GetReportSchedule)
+			r.Put("/report-schedule", h.Visitors.UpdateReportSchedule)
+			r.With(idempotency).Post("/report-schedule/trigger", h.Visitors.TriggerReport)
+			r.Get("/report-deliveries", h.Visitors.ListReportDeliveries)
 		})
 
 		r.Route("/uploads", func(r chi.Router) {
