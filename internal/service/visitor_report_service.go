@@ -8,6 +8,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
 	"math/big"
 	"net"
@@ -231,10 +232,11 @@ func (s *VisitorReportService) GenerateAndSendReport(
 
 	dateRangeStr := fmt.Sprintf("%s to %s", periodStart.Format("Jan 02, 2006"), now.Format("Jan 02, 2006"))
 	subject := fmt.Sprintf("Dexta Africa - %s Visitor Check-In Report (%s)", cadenceLabel, dateRangeStr)
+	triggerSourceHTML := html.EscapeString(triggerSource)
 
 	deptListHTML := ""
 	for dept, count := range deptMap {
-		deptListHTML += fmt.Sprintf(`<tr><td style="padding: 6px 12px; border-bottom: 1px solid #1e293b; color: #cbd5e1;">%s</td><td style="padding: 6px 12px; border-bottom: 1px solid #1e293b; color: #f8fafc; text-align: right; font-weight: 700;">%d</td></tr>`, dept, count)
+		deptListHTML += fmt.Sprintf(`<tr><td style="padding: 6px 12px; border-bottom: 1px solid #1e293b; color: #cbd5e1;">%s</td><td style="padding: 6px 12px; border-bottom: 1px solid #1e293b; color: #f8fafc; text-align: right; font-weight: 700;">%d</td></tr>`, html.EscapeString(dept), count)
 	}
 	if deptListHTML == "" {
 		deptListHTML = `<tr><td colspan="2" style="padding: 12px; text-align: center; color: #94a3b8;">No visitor arrivals recorded during this period.</td></tr>`
@@ -291,7 +293,7 @@ func (s *VisitorReportService) GenerateAndSendReport(
   </div>
 </body>
 </html>
-`, subject, cadenceLabel, dateRangeStr, totalVisitors, checkedOutCount, checkedInCount, deptListHTML, now.Format("2006-01-02"), triggerSource)
+`, subject, cadenceLabel, dateRangeStr, totalVisitors, checkedOutCount, checkedInCount, deptListHTML, now.Format("2006-01-02"), triggerSourceHTML)
 
 	// Send email or simulate
 	deliveryStatus := "SENT"
