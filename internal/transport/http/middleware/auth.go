@@ -36,6 +36,7 @@ func RequireAdmin(jwtSecret string) func(http.Handler) http.Handler {
 			}
 
 			ctx := context.WithValue(r.Context(), adminIDKey, claims.AdminID)
+			ctx = authtoken.ContextWithClaims(ctx, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

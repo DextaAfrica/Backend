@@ -17,6 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/DextaAfrica/Backend/internal/application"
 	"github.com/DextaAfrica/Backend/internal/config"
 	"github.com/DextaAfrica/Backend/internal/db"
 	"github.com/DextaAfrica/Backend/internal/logging"
@@ -77,31 +78,42 @@ func run() error {
 	}
 	defer pool.Close()
 
-	repos := buildRepositories(pool)
+	repos := buildRepositories(pool, cfg.Auth.JWTSecret)
 	services := buildServices(cfg, repos)
+
+	// Launch resilient transactional outbox worker in background with lifecycle management
+	outboxWorker := application.NewOutboxWorker(pool)
+	go outboxWorker.Start(ctx)
+	defer outboxWorker.Stop()
+
+	// Launch automated visitor report cron worker
+	visitorReportWorker := application.NewVisitorReportWorker(services.VisitorReports)
+	go visitorReportWorker.Start(ctx)
+	defer visitorReportWorker.Stop()
 
 	if err := services.Auth.BootstrapAdmin(ctx, cfg.Auth.AdminBootstrapEmail, cfg.Auth.AdminBootstrapPassword); err != nil {
 		return fmt.Errorf("bootstrap admin: %w", err)
 	}
 
 	h := transporthttp.Handlers{
-		Health:     handlers.NewHealthHandler(pool),
-		Auth:       handlers.NewAuthHandler(services.Auth),
-		Content:    handlers.NewContentHandler(services.Content),
-		Portfolio:  handlers.NewPortfolioHandler(services.Portfolio),
-		Journal:    handlers.NewJournalHandler(services.Journal),
-		Careers:    handlers.NewCareerHandler(services.Career),
-		Enquiries:  handlers.NewEnquiryHandler(services.Enquiry),
-		Newsletter: handlers.NewNewsletterHandler(services.Newsletter),
-		Forms:      handlers.NewFormHandler(services.Forms),
-		Users:      handlers.NewUserHandler(services.User),
+		Health:             handlers.NewHealthHandler(pool),
+		Auth:               handlers.NewAuthHandler(services.Auth),
+		Content:            handlers.NewContentHandler(services.Content),
+		Portfolio:          handlers.NewPortfolioHandler(services.Portfolio),
+		Journal:            handlers.NewJournalHandler(services.Journal),
+		Careers:            handlers.NewCareerHandler(services.Career),
+		Enquiries:          handlers.NewEnquiryHandler(services.Enquiry),
+		Newsletter:         handlers.NewNewsletterHandler(services.Newsletter),
+		Forms:              handlers.NewFormHandler(services.Forms),
+		Visitors:           handlers.NewVisitorHandler(services.Visitors, services.VisitorReports),
+		Users:              handlers.NewUserHandler(services.User),
 		Audit:              handlers.NewAuditHandler(services.Audit),
 		Storage:            handlers.NewStorageHandler(services.Storage),
 		ProductionApproval: handlers.NewProductionApprovalHandler(services.ProductionApproval),
 		DashboardAccess:    handlers.NewDashboardAccessHandler(services.DashboardAccess),
 	}
 
-	router := transporthttp.NewRouter(cfg, pool, h)
+	router := transporthttp.NewRouter(cfg, pool, h, repos.Idempotency)
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.App.Port),
@@ -140,22 +152,28 @@ func run() error {
 // repositories groups every repository implementation constructed against
 // the shared connection pool.
 type repositories struct {
-	Admins      *postgres.AdminRepository
-	Pages       *postgres.PageRepository
-	Portfolio   *postgres.DevelopmentRepository
-	Journal     *postgres.ArticleRepository
-	Careers     *postgres.CareerListingRepository
-	Enquiries   *postgres.EnquiryRepository
-	Subscribers *postgres.SubscriberRepository
-	Forms       *postgres.FormRepository
+	Admins              *postgres.AdminRepository
+	Sessions            *postgres.SessionRepository
+	Idempotency         *postgres.IdempotencyRepository
+	Pages               *postgres.PageRepository
+	Portfolio           *postgres.DevelopmentRepository
+	Journal             *postgres.ArticleRepository
+	Careers             *postgres.CareerListingRepository
+	Enquiries           *postgres.EnquiryRepository
+	Subscribers         *postgres.SubscriberRepository
+	Forms               *postgres.FormRepository
+	Visitors            *postgres.VisitorRepository
+	VisitorReports      *postgres.VisitorReportRepository
 	Audit               *postgres.AuditRepository
 	ProductionApprovals *postgres.ProductionApprovalRepository
 	DashboardAccess     *postgres.DashboardAccessRepository
 }
 
-func buildRepositories(pool *pgxpool.Pool) repositories {
+func buildRepositories(pool *pgxpool.Pool, jwtSecret string) repositories {
 	return repositories{
 		Admins:              postgres.NewAdminRepository(pool),
+		Sessions:            postgres.NewSessionRepository(pool),
+		Idempotency:         postgres.NewIdempotencyRepository(pool),
 		Pages:               postgres.NewPageRepository(pool),
 		Portfolio:           postgres.NewDevelopmentRepository(pool),
 		Journal:             postgres.NewArticleRepository(pool),
@@ -163,7 +181,9 @@ func buildRepositories(pool *pgxpool.Pool) repositories {
 		Enquiries:           postgres.NewEnquiryRepository(pool),
 		Subscribers:         postgres.NewSubscriberRepository(pool),
 		Forms:               postgres.NewFormRepository(pool),
-		Audit:               postgres.NewAuditRepository(pool),
+		Visitors:            postgres.NewVisitorRepository(pool),
+		VisitorReports:      postgres.NewVisitorReportRepository(pool),
+		Audit:               postgres.NewAuditRepository(pool, jwtSecret),
 		ProductionApprovals: postgres.NewProductionApprovalRepository(pool),
 		DashboardAccess:     postgres.NewDashboardAccessRepository(pool),
 	}
@@ -180,6 +200,8 @@ type services struct {
 	Enquiry    *service.EnquiryService
 	Newsletter *service.NewsletterService
 	Forms      *service.FormService
+	Visitors   *service.VisitorService
+	VisitorReports *service.VisitorReportService
 	User       *service.UserService
 	Audit              *service.AuditService
 	Storage            storage.Service
@@ -193,7 +215,7 @@ func buildServices(cfg *config.Config, repos repositories) services {
 	storageService := storage.NewS3Service(cfg.Storage)
 
 	return services{
-		Auth:               service.NewAuthService(repos.Admins, cfg.Auth.JWTSecret, cfg.Auth.AccessTokenTTL),
+		Auth:               service.NewAuthService(repos.Admins, repos.Sessions, repos.Audit, cfg.Auth.JWTSecret, cfg.Auth.AccessTokenTTL),
 		Content:            service.NewContentService(repos.Pages, revalidator),
 		Portfolio:          service.NewPortfolioService(repos.Portfolio, revalidator),
 		Journal:            service.NewJournalService(repos.Journal, revalidator),
@@ -201,6 +223,8 @@ func buildServices(cfg *config.Config, repos repositories) services {
 		Enquiry:            service.NewEnquiryService(repos.Enquiries),
 		Newsletter:         service.NewNewsletterService(repos.Subscribers, forwarder),
 		Forms:              service.NewFormService(repos.Forms),
+		Visitors:           service.NewVisitorService(repos.Visitors),
+		VisitorReports:     service.NewVisitorReportService(repos.VisitorReports, repos.Visitors, cfg.SMTP),
 		User:               service.NewUserService(repos.Admins),
 		Audit:              service.NewAuditService(repos.Audit),
 		Storage:            storageService,
