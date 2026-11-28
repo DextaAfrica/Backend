@@ -340,8 +340,20 @@ func (h *VisitorHandler) UpdateReportSchedule(w http.ResponseWriter, r *http.Req
 }
 
 // Admin: POST /admin/visitors/report-schedule/trigger
+func sanitizeHeaderValue(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.ReplaceAll(value, "\r", "")
+	value = strings.ReplaceAll(value, "\n", "")
+	return strings.Map(func(r rune) rune {
+		if r < 32 || r == 127 {
+			return -1
+		}
+		return r
+	}, value)
+}
+
 func (h *VisitorHandler) TriggerReport(w http.ResponseWriter, r *http.Request) {
-	adminEmail := r.Header.Get("X-Admin-Email")
+	adminEmail := sanitizeHeaderValue(r.Header.Get("X-Admin-Email"))
 	delivery, err := h.reports.TriggerReport(r.Context(), adminEmail)
 	if err != nil {
 		response.Error(w, r, err)
