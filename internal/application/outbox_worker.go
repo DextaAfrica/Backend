@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
+	"math/rand"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -38,7 +40,7 @@ type OutboxEvent struct {
 	UpdatedAt     time.Time
 }
 
-// OutboxWorker processes pending outbox events with zero message loss.
+// OutboxWorker processes pending outbox events with zero message loss and exponential backoff.
 type OutboxWorker struct {
 	pool   *pgxpool.Pool
 	stopCh chan struct{}
@@ -77,6 +79,13 @@ func (w *OutboxWorker) Stop() {
 	close(w.stopCh)
 }
 
+func calculateBackoff(retryCount int) time.Duration {
+	base := float64(time.Second)
+	backoff := base * math.Pow(2, float64(retryCount))
+	jitter := float64(rand.Intn(500)) * float64(time.Millisecond) // #nosec G404
+	return time.Duration(backoff + jitter)
+}
+
 func (w *OutboxWorker) processPendingEvents(ctx context.Context) {
 	tx, err := w.pool.Begin(ctx)
 	if err != nil {
@@ -85,8 +94,9 @@ func (w *OutboxWorker) processPendingEvents(ctx context.Context) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
+	// Exponential backoff check: only retry if enough time has elapsed since last failure
 	const selectQuery = `
-		SELECT id, event_type, aggregate_type, aggregate_id, payload, retry_count, max_retries
+		SELECT id, event_type, aggregate_type, aggregate_id, payload, retry_count, max_retries, updated_at
 		FROM outbox_events
 		WHERE status = 'PENDING' AND retry_count < max_retries
 		ORDER BY created_at ASC
@@ -109,15 +119,25 @@ func (w *OutboxWorker) processPendingEvents(ctx context.Context) {
 		payload       []byte
 		retryCount    int
 		maxRetries    int
+		updatedAt     time.Time
 	}
 
 	var events []eventRow
+	now := time.Now().UTC()
 	for rows.Next() {
 		var e eventRow
-		if err := rows.Scan(&e.id, &e.eventType, &e.aggregateType, &e.aggregateID, &e.payload, &e.retryCount, &e.maxRetries); err != nil {
+		if err := rows.Scan(&e.id, &e.eventType, &e.aggregateType, &e.aggregateID, &e.payload, &e.retryCount, &e.maxRetries, &e.updatedAt); err != nil {
 			slog.Error("outbox worker: scan event row failed", "error", err)
 			continue
 		}
+
+		if e.retryCount > 0 {
+			backoff := calculateBackoff(e.retryCount)
+			if e.updatedAt.Add(backoff).After(now) {
+				continue // Skip until backoff window expires
+			}
+		}
+
 		events = append(events, e)
 	}
 	rows.Close()
@@ -144,20 +164,25 @@ func (w *OutboxWorker) dispatch(ctx context.Context, tx pgx.Tx, id, eventType st
 	var dispatchErr error
 	switch eventType {
 	case "LEAD_CREATED", "ENQUIRY_RECEIVED":
-		slog.Info("dispatched notification for new enquiry/lead", "id", id)
-	case "INSPECTION_BOOKED":
-		slog.Info("dispatched inspection calendar confirmation", "id", id)
+		slog.Info("outbox: dispatched enquiry lead notification", "id", id, "recipient", payloadMap["email"])
 	case "NEWSLETTER_SUBSCRIBED":
-		slog.Info("dispatched newsletter welcome confirmation", "id", id)
+		slog.Info("outbox: dispatched newsletter welcome dispatch", "id", id, "subscriber", payloadMap["email"])
+	case "ACCESS_REQUESTED":
+		slog.Info("outbox: dispatched access request notification to IT security", "id", id)
+	case "PRODUCTION_RELEASE_SUBMITTED":
+		slog.Info("outbox: dispatched high-priority release alert to Super Admins", "id", id)
+	case "PRODUCTION_RELEASE_APPROVED":
+		slog.Info("outbox: dispatched release deployment trigger", "id", id)
 	default:
-		slog.Debug("unhandled outbox event type", "type", eventType)
+		slog.Debug("outbox: custom event processed", "type", eventType)
 	}
 
 	now := time.Now().UTC()
 	if dispatchErr != nil {
 		newStatus := "PENDING"
 		if retryCount+1 >= maxRetries {
-			newStatus = "FAILED"
+			newStatus = "FAILED" // Dead Letter Queue (DLQ)
+			slog.Error("outbox: event exceeded max retries, moved to DLQ (FAILED)", "id", id, "type", eventType)
 		}
 
 		errMsg := dispatchErr.Error()

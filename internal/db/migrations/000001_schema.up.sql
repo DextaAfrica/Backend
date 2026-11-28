@@ -21,12 +21,47 @@ CREATE TABLE admins (
     status            TEXT NOT NULL DEFAULT 'ACTIVE',
     assigned_modules  TEXT NOT NULL DEFAULT '["operations","approvals","personal"]',
     signature_url     TEXT,
+    failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until      TIMESTAMPTZ,
+    last_login_at     TIMESTAMPTZ,
+    last_login_ip     TEXT NOT NULL DEFAULT '',
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_admins_role ON admins (role);
 CREATE INDEX idx_admins_department ON admins (department);
+
+-- ── Admin Session Vault (Dual Token & Token Reuse Detection) ─────────────
+CREATE TABLE admin_sessions (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    admin_id     UUID NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+    token_hash   TEXT NOT NULL UNIQUE,
+    ip_address   TEXT NOT NULL DEFAULT '',
+    user_agent   TEXT NOT NULL DEFAULT '',
+    revoked      BOOLEAN NOT NULL DEFAULT false,
+    expires_at   TIMESTAMPTZ NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_admin_sessions_token_hash ON admin_sessions (token_hash);
+CREATE INDEX idx_admin_sessions_admin_id ON admin_sessions (admin_id);
+CREATE INDEX idx_admin_sessions_expires_at ON admin_sessions (expires_at);
+
+-- ── Idempotency Keys (Financial-Grade Replay Protection) ─────────────────
+CREATE TABLE idempotency_keys (
+    key               TEXT PRIMARY KEY,
+    request_path      TEXT NOT NULL,
+    request_method    VARCHAR(16) NOT NULL,
+    request_body_hash TEXT NOT NULL,
+    status_code       INTEGER,
+    response_body     BYTEA,
+    locked_until      TIMESTAMPTZ NOT NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_idempotency_keys_locked ON idempotency_keys (locked_until);
 
 -- ── Pages ────────────────────────────────────────────────────────────────
 -- Flexible, JSONB-bodied content for every singleton editorial page (home,
@@ -219,7 +254,7 @@ CREATE TABLE outbox_events (
 
 CREATE INDEX idx_outbox_status ON outbox_events (status, created_at);
 
--- ── Immutable Enterprise Audit Logs ──────────────────────────────────────
+-- ── Immutable Enterprise Audit Logs (Cryptographic HMAC Chained) ─────────
 CREATE TABLE audit_logs (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     actor_id       TEXT,
@@ -230,12 +265,15 @@ CREATE TABLE audit_logs (
     ip_address     TEXT,
     user_agent     TEXT,
     metadata       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    prev_hash      TEXT NOT NULL DEFAULT '',
+    record_hash    TEXT NOT NULL DEFAULT '',
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_audit_logs_action ON audit_logs (action);
 CREATE INDEX idx_audit_logs_created_at ON audit_logs (created_at DESC);
 CREATE INDEX idx_audit_logs_actor_id ON audit_logs (actor_id);
+CREATE INDEX idx_audit_logs_record_hash ON audit_logs (record_hash);
 
 -- ── Production Release Requests (2-Stage Approval Architecture) ───────────
 CREATE TABLE production_release_requests (
@@ -293,6 +331,45 @@ CREATE INDEX idx_dash_req_status ON dashboard_access_requests (status);
 CREATE INDEX idx_dash_req_user_id ON dashboard_access_requests (user_id);
 CREATE INDEX idx_dash_req_created_at ON dashboard_access_requests (created_at DESC);
 
+-- ── Visitor Management System ──────────────────────────────────────────────
+CREATE TABLE visitors (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    pass_code         TEXT NOT NULL UNIQUE,
+    full_name         TEXT NOT NULL,
+    phone             TEXT NOT NULL,
+    email             TEXT NOT NULL,
+    company           TEXT NOT NULL DEFAULT '',
+    position          TEXT NOT NULL DEFAULT '',
+    purpose           TEXT NOT NULL,
+    purpose_other     TEXT NOT NULL DEFAULT '',
+    host_name         TEXT NOT NULL,
+    department        TEXT NOT NULL,
+    has_appointment   BOOLEAN NOT NULL DEFAULT false,
+    invited_by        TEXT NOT NULL DEFAULT '',
+    visit_description TEXT NOT NULL DEFAULT '',
+    visit_date        DATE NOT NULL DEFAULT CURRENT_DATE,
+    check_in_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    check_out_at      TIMESTAMPTZ,
+    status            TEXT NOT NULL DEFAULT 'checked_in',
+    agreed_guidelines BOOLEAN NOT NULL DEFAULT false,
+    consented_data    BOOLEAN NOT NULL DEFAULT false,
+    declared_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ip_address        TEXT NOT NULL DEFAULT '',
+    user_agent        TEXT NOT NULL DEFAULT '',
+    checked_out_by    TEXT NOT NULL DEFAULT '',
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_visitors_status CHECK (status IN ('checked_in', 'checked_out'))
+);
+
+CREATE INDEX idx_visitors_pass_code ON visitors (pass_code);
+CREATE INDEX idx_visitors_status ON visitors (status);
+CREATE INDEX idx_visitors_visit_date ON visitors (visit_date);
+CREATE INDEX idx_visitors_department ON visitors (department);
+CREATE INDEX idx_visitors_email ON visitors (email);
+CREATE INDEX idx_visitors_phone ON visitors (phone);
+CREATE INDEX idx_visitors_check_in_at ON visitors (check_in_at DESC);
+
 -- ── updated_at Maintenance ───────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
@@ -303,6 +380,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_admins_updated_at BEFORE UPDATE ON admins
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_admin_sessions_updated_at BEFORE UPDATE ON admin_sessions
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_pages_updated_at BEFORE UPDATE ON pages
@@ -324,4 +404,7 @@ CREATE TRIGGER trg_production_release_requests_updated_at BEFORE UPDATE ON produ
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_dashboard_access_requests_updated_at BEFORE UPDATE ON dashboard_access_requests
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_visitors_updated_at BEFORE UPDATE ON visitors
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();

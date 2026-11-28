@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,14 +20,64 @@ func NewAdminRepository(pool *pgxpool.Pool) *AdminRepository {
 	return &AdminRepository{pool: pool}
 }
 
+const adminColumns = `
+	id, email, password_hash, full_name, role, department, job_title, phone, status,
+	assigned_modules, signature_url, failed_login_attempts, locked_until, last_login_at,
+	last_login_ip, created_at, updated_at`
+
+func scanAdmin(row pgx.Row, a *domain.Admin) error {
+	return row.Scan(
+		&a.ID,
+		&a.Email,
+		&a.PasswordHash,
+		&a.FullName,
+		&a.Role,
+		&a.Department,
+		&a.JobTitle,
+		&a.Phone,
+		&a.Status,
+		&a.AssignedModules,
+		&a.SignatureURL,
+		&a.FailedLoginAttempts,
+		&a.LockedUntil,
+		&a.LastLoginAt,
+		&a.LastLoginIP,
+		&a.CreatedAt,
+		&a.UpdatedAt,
+	)
+}
+
 func (r *AdminRepository) Create(ctx context.Context, admin *domain.Admin) error {
+	if admin.AssignedModules == "" {
+		admin.AssignedModules = `["operations","approvals","personal"]`
+	}
+	if admin.Role == "" {
+		admin.Role = "ADMIN"
+	}
+	if admin.Status == "" {
+		admin.Status = "ACTIVE"
+	}
+
 	const q = `
-		INSERT INTO admins (email, password_hash, full_name, role, department, job_title, phone, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO admins (
+			email, password_hash, full_name, role, department, job_title, phone, status,
+			assigned_modules, signature_url
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at`
 
-	err := r.pool.QueryRow(ctx, q, admin.Email, admin.PasswordHash, admin.FullName, admin.Role, admin.Department, admin.JobTitle, admin.Phone, admin.Status).
-		Scan(&admin.ID, &admin.CreatedAt, &admin.UpdatedAt)
+	err := r.pool.QueryRow(ctx, q,
+		admin.Email,
+		admin.PasswordHash,
+		admin.FullName,
+		admin.Role,
+		admin.Department,
+		admin.JobTitle,
+		admin.Phone,
+		admin.Status,
+		admin.AssignedModules,
+		admin.SignatureURL,
+	).Scan(&admin.ID, &admin.CreatedAt, &admin.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("admin_repo: create: %w", err)
 	}
@@ -34,9 +85,22 @@ func (r *AdminRepository) Create(ctx context.Context, admin *domain.Admin) error
 }
 
 func (r *AdminRepository) Upsert(ctx context.Context, admin *domain.Admin) error {
+	if admin.AssignedModules == "" {
+		admin.AssignedModules = `["operations","approvals","personal"]`
+	}
+	if admin.Role == "" {
+		admin.Role = "ADMIN"
+	}
+	if admin.Status == "" {
+		admin.Status = "ACTIVE"
+	}
+
 	const q = `
-		INSERT INTO admins (email, password_hash, full_name, role, department, job_title, phone, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO admins (
+			email, password_hash, full_name, role, department, job_title, phone, status,
+			assigned_modules, signature_url
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (email) DO UPDATE SET
 			full_name = EXCLUDED.full_name,
 			role = EXCLUDED.role,
@@ -44,25 +108,34 @@ func (r *AdminRepository) Upsert(ctx context.Context, admin *domain.Admin) error
 			job_title = EXCLUDED.job_title,
 			phone = EXCLUDED.phone,
 			status = EXCLUDED.status,
+			assigned_modules = CASE WHEN EXCLUDED.assigned_modules <> '' THEN EXCLUDED.assigned_modules ELSE admins.assigned_modules END,
+			signature_url = COALESCE(EXCLUDED.signature_url, admins.signature_url),
 			updated_at = now()
 		RETURNING id, created_at, updated_at`
 
-	err := r.pool.QueryRow(ctx, q, admin.Email, admin.PasswordHash, admin.FullName, admin.Role, admin.Department, admin.JobTitle, admin.Phone, admin.Status).
-		Scan(&admin.ID, &admin.CreatedAt, &admin.UpdatedAt)
+	err := r.pool.QueryRow(ctx, q,
+		admin.Email,
+		admin.PasswordHash,
+		admin.FullName,
+		admin.Role,
+		admin.Department,
+		admin.JobTitle,
+		admin.Phone,
+		admin.Status,
+		admin.AssignedModules,
+		admin.SignatureURL,
+	).Scan(&admin.ID, &admin.CreatedAt, &admin.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("admin_repo: upsert: %w", err)
 	}
 	return nil
 }
 
-const adminColumns = `id, email, password_hash, full_name, role, department, job_title, phone, status, created_at, updated_at`
-
 func (r *AdminRepository) GetByEmail(ctx context.Context, email string) (*domain.Admin, error) {
 	q := `SELECT ` + adminColumns + ` FROM admins WHERE email = $1`
 
 	a := &domain.Admin{}
-	err := r.pool.QueryRow(ctx, q, email).
-		Scan(&a.ID, &a.Email, &a.PasswordHash, &a.FullName, &a.Role, &a.Department, &a.JobTitle, &a.Phone, &a.Status, &a.CreatedAt, &a.UpdatedAt)
+	err := scanAdmin(r.pool.QueryRow(ctx, q, email), a)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -76,8 +149,7 @@ func (r *AdminRepository) GetByID(ctx context.Context, id string) (*domain.Admin
 	q := `SELECT ` + adminColumns + ` FROM admins WHERE id = $1`
 
 	a := &domain.Admin{}
-	err := r.pool.QueryRow(ctx, q, id).
-		Scan(&a.ID, &a.Email, &a.PasswordHash, &a.FullName, &a.Role, &a.Department, &a.JobTitle, &a.Phone, &a.Status, &a.CreatedAt, &a.UpdatedAt)
+	err := scanAdmin(r.pool.QueryRow(ctx, q, id), a)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -111,10 +183,10 @@ func (r *AdminRepository) List(ctx context.Context, params domain.ListParams) (d
 	}
 	defer rows.Close()
 
-	var items []domain.Admin
+	items := make([]domain.Admin, 0)
 	for rows.Next() {
 		var a domain.Admin
-		if err := rows.Scan(&a.ID, &a.Email, &a.PasswordHash, &a.FullName, &a.Role, &a.Department, &a.JobTitle, &a.Phone, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := scanAdmin(rows, &a); err != nil {
 			return domain.PageResult[domain.Admin]{}, fmt.Errorf("admin_repo: scan: %w", err)
 		}
 		items = append(items, a)
@@ -128,4 +200,20 @@ func (r *AdminRepository) List(ctx context.Context, params domain.ListParams) (d
 		Page:       params.Page,
 		PerPage:    params.PerPage,
 	}, nil
+}
+
+func (r *AdminRepository) UpdateLoginSecurity(ctx context.Context, id string, failedAttempts int, lockedUntil *time.Time, lastLoginAt *time.Time, lastLoginIP string) error {
+	const q = `
+		UPDATE admins
+		SET failed_login_attempts = $1,
+		    locked_until = $2,
+		    last_login_at = COALESCE($3, last_login_at),
+		    last_login_ip = CASE WHEN $4 <> '' THEN $4 ELSE last_login_ip END,
+		    updated_at = now()
+		WHERE id = $5`
+	_, err := r.pool.Exec(ctx, q, failedAttempts, lockedUntil, lastLoginAt, lastLoginIP, id)
+	if err != nil {
+		return fmt.Errorf("admin_repo: update login security: %w", err)
+	}
+	return nil
 }
