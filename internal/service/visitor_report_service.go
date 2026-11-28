@@ -8,7 +8,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"html"
+	"html/template"
 	"log/slog"
 	"math/big"
 	"net"
@@ -139,6 +139,93 @@ func sanitizeCSV(s string) string {
 	return s
 }
 
+type visitorReportDepartment struct {
+	Name  string
+	Count int
+}
+
+type visitorReportEmailData struct {
+	Cadence        string
+	DateRange      string
+	TotalVisitors  int
+	CheckedOut     int
+	CheckedIn      int
+	Departments    []visitorReportDepartment
+	AttachmentDate string
+	TriggerSource  string
+}
+
+const visitorReportEmailHTML = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>{{.Cadence}} Visitor Check-In Report ({{.DateRange}})</title></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #070A0F; color: #f8fafc; padding: 24px; margin: 0;">
+  <div style="max-width: 640px; margin: 0 auto; background: #0d111a; border: 1px solid #1e293b; border-radius: 16px; overflow: hidden;">
+    <div style="background: linear-gradient(135deg, #ED2618 0%, #991b1b 100%); padding: 24px 28px;">
+      <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: #fecaca; font-weight: 700;">Dexta Africa Reception &amp; Security</p>
+      <h1 style="margin: 6px 0 0; font-size: 22px; color: #ffffff;">{{.Cadence}} Visitor Check-In Digest</h1>
+      <p style="margin: 4px 0 0; font-size: 13px; color: #fee2e2;">Period: {{.DateRange}}</p>
+    </div>
+    <div style="padding: 28px;">
+      <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+        <div style="flex: 1; background: #141923; border: 1px solid #263042; border-radius: 12px; padding: 16px; text-align: center;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700;">Total Arrivals</div>
+          <div style="font-size: 28px; font-weight: 800; color: #ffffff; margin-top: 4px;">{{.TotalVisitors}}</div>
+        </div>
+        <div style="flex: 1; background: #141923; border: 1px solid #263042; border-radius: 12px; padding: 16px; text-align: center;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700;">Departed</div>
+          <div style="font-size: 28px; font-weight: 800; color: #10b981; margin-top: 4px;">{{.CheckedOut}}</div>
+        </div>
+        <div style="flex: 1; background: #141923; border: 1px solid #263042; border-radius: 12px; padding: 16px; text-align: center;">
+          <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700;">Active On-Site</div>
+          <div style="font-size: 28px; font-weight: 800; color: #ED2618; margin-top: 4px;">{{.CheckedIn}}</div>
+        </div>
+      </div>
+
+      <h3 style="font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; color: #cbd5e1; margin: 24px 0 12px; border-bottom: 1px solid #1e293b; padding-bottom: 8px;">Visits by Department</h3>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 24px;">
+        <thead>
+          <tr style="background: #141923;">
+            <th style="padding: 8px 12px; text-align: left; color: #94a3b8; border-bottom: 1px solid #263042;">Department</th>
+            <th style="padding: 8px 12px; text-align: right; color: #94a3b8; border-bottom: 1px solid #263042;">Visits</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{if .Departments}}
+            {{range .Departments}}
+          <tr><td style="padding: 6px 12px; border-bottom: 1px solid #1e293b; color: #cbd5e1;">{{.Name}}</td><td style="padding: 6px 12px; border-bottom: 1px solid #1e293b; color: #f8fafc; text-align: right; font-weight: 700;">{{.Count}}</td></tr>
+            {{end}}
+          {{else}}
+          <tr><td colspan="2" style="padding: 12px; text-align: center; color: #94a3b8;">No visitor arrivals recorded during this period.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+
+      <div style="background: #141923; border: 1px dashed #334155; border-radius: 12px; padding: 16px; font-size: 12px; color: #94a3b8;">
+        📎 A full CSV spreadsheet containing every visitor pass, arrival timestamp, host, and contact details has been attached to this email (<strong>dexta-visitors-{{.AttachmentDate}}.csv</strong>).
+      </div>
+
+      <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #1e293b; font-size: 11px; color: #64748b; text-align: center;">
+        Automated Enterprise Report • Triggered by {{.TriggerSource}} • Dexta Africa Security Operations
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+`
+
+func renderVisitorReportEmail(data visitorReportEmailData) (string, error) {
+	tmpl, err := template.New("visitor-report").Parse(visitorReportEmailHTML)
+	if err != nil {
+		return "", fmt.Errorf("parse visitor report email template: %w", err)
+	}
+	var body bytes.Buffer
+	if err := tmpl.Execute(&body, data); err != nil {
+		return "", fmt.Errorf("render visitor report email template: %w", err)
+	}
+	return body.String(), nil
+}
+
 func (s *VisitorReportService) GenerateAndSendReport(
 	ctx context.Context,
 	schedule *domain.VisitorReportSchedule,
@@ -232,68 +319,23 @@ func (s *VisitorReportService) GenerateAndSendReport(
 
 	dateRangeStr := fmt.Sprintf("%s to %s", periodStart.Format("Jan 02, 2006"), now.Format("Jan 02, 2006"))
 	subject := fmt.Sprintf("Dexta Africa - %s Visitor Check-In Report (%s)", cadenceLabel, dateRangeStr)
-	triggerSourceHTML := html.EscapeString(triggerSource)
-
-	deptListHTML := ""
+	departments := make([]visitorReportDepartment, 0, len(deptMap))
 	for dept, count := range deptMap {
-		deptListHTML += fmt.Sprintf(`<tr><td style="padding: 6px 12px; border-bottom: 1px solid #1e293b; color: #cbd5e1;">%s</td><td style="padding: 6px 12px; border-bottom: 1px solid #1e293b; color: #f8fafc; text-align: right; font-weight: 700;">%d</td></tr>`, html.EscapeString(dept), count)
+		departments = append(departments, visitorReportDepartment{Name: dept, Count: count})
 	}
-	if deptListHTML == "" {
-		deptListHTML = `<tr><td colspan="2" style="padding: 12px; text-align: center; color: #94a3b8;">No visitor arrivals recorded during this period.</td></tr>`
+	htmlBody, err := renderVisitorReportEmail(visitorReportEmailData{
+		Cadence:        cadenceLabel,
+		DateRange:      dateRangeStr,
+		TotalVisitors:  totalVisitors,
+		CheckedOut:     checkedOutCount,
+		CheckedIn:      checkedInCount,
+		Departments:    departments,
+		AttachmentDate: now.Format("2006-01-02"),
+		TriggerSource:  triggerSource,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("visitor_report_service: build email: %w", err)
 	}
-
-	htmlBody := fmt.Sprintf(`
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><title>%s</title></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #070A0F; color: #f8fafc; padding: 24px; margin: 0;">
-  <div style="max-width: 640px; margin: 0 auto; background: #0d111a; border: 1px solid #1e293b; border-radius: 16px; overflow: hidden;">
-    <div style="background: linear-gradient(135deg, #ED2618 0%%, #991b1b 100%%); padding: 24px 28px;">
-      <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: #fecaca; font-weight: 700;">Dexta Africa Reception &amp; Security</p>
-      <h1 style="margin: 6px 0 0; font-size: 22px; color: #ffffff;">%s Visitor Check-In Digest</h1>
-      <p style="margin: 4px 0 0; font-size: 13px; color: #fee2e2;">Period: %s</p>
-    </div>
-    <div style="padding: 28px;">
-      <div style="display: flex; gap: 12px; margin-bottom: 24px;">
-        <div style="flex: 1; background: #141923; border: 1px solid #263042; border-radius: 12px; padding: 16px; text-align: center;">
-          <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700;">Total Arrivals</div>
-          <div style="font-size: 28px; font-weight: 800; color: #ffffff; margin-top: 4px;">%d</div>
-        </div>
-        <div style="flex: 1; background: #141923; border: 1px solid #263042; border-radius: 12px; padding: 16px; text-align: center;">
-          <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700;">Departed</div>
-          <div style="font-size: 28px; font-weight: 800; color: #10b981; margin-top: 4px;">%d</div>
-        </div>
-        <div style="flex: 1; background: #141923; border: 1px solid #263042; border-radius: 12px; padding: 16px; text-align: center;">
-          <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700;">Active On-Site</div>
-          <div style="font-size: 28px; font-weight: 800; color: #ED2618; margin-top: 4px;">%d</div>
-        </div>
-      </div>
-
-      <h3 style="font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; color: #cbd5e1; margin: 24px 0 12px; border-bottom: 1px solid #1e293b; padding-bottom: 8px;">Visits by Department</h3>
-      <table style="width: 100%%; border-collapse: collapse; font-size: 13px; margin-bottom: 24px;">
-        <thead>
-          <tr style="background: #141923;">
-            <th style="padding: 8px 12px; text-align: left; color: #94a3b8; border-bottom: 1px solid #263042;">Department</th>
-            <th style="padding: 8px 12px; text-align: right; color: #94a3b8; border-bottom: 1px solid #263042;">Visits</th>
-          </tr>
-        </thead>
-        <tbody>
-          %s
-        </tbody>
-      </table>
-
-      <div style="background: #141923; border: 1px dashed #334155; border-radius: 12px; padding: 16px; font-size: 12px; color: #94a3b8;">
-        📎 A full CSV spreadsheet containing every visitor pass, arrival timestamp, host, and contact details has been attached to this email (<strong>dexta-visitors-%s.csv</strong>).
-      </div>
-
-      <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #1e293b; font-size: 11px; color: #64748b; text-align: center;">
-        Automated Enterprise Report • Triggered by %s • Dexta Africa Security Operations
-      </div>
-    </div>
-  </div>
-</body>
-</html>
-`, subject, cadenceLabel, dateRangeStr, totalVisitors, checkedOutCount, checkedInCount, deptListHTML, now.Format("2006-01-02"), triggerSourceHTML)
 
 	// Send email or simulate
 	deliveryStatus := "SENT"
